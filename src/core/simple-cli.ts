@@ -531,21 +531,27 @@ export class SimpleCLI {
 
       case 'prompt':
         // Usage: /prompt <name>
+        // Loads prompt from ~/.config/cli-code/prompts/<name>.txt
         const promptName = parts[1];
         if (!promptName) {
           console.log(chalk.yellow('Usage: /prompt <prompt_name>'));
+          console.log(chalk.gray('Prompts are loaded from ~/.config/cli-code/prompts/<name>.txt'));
+          break;
+        }
+        const promptContent = this.agent.loadUserPrompt(promptName);
+        if (!promptContent) {
+          console.log(chalk.red(`Prompt '${promptName}' not found.`));
+          console.log(chalk.gray(`Create it at: ~/.config/cli-code/prompts/${promptName}.txt`));
           break;
         }
         try {
-          const promptPath = path.resolve('src', 'prompts', `${promptName}.txt`);
-          const promptContent = fs.readFileSync(promptPath, { encoding: 'utf-8' });
           // Send prompt content as a chat message to the agent
           this.isProcessing = true;
           this.spinner = createSpinner('Sending prompt...');
           await this.agent.chat(promptContent);
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
-          console.log(chalk.red(`Failed to load prompt '${promptName}': ${message}`));
+          console.log(chalk.red(`Failed to send prompt '${promptName}': ${message}`));
         } finally {
           this.spinner?.stop();
           this.isProcessing = false;
@@ -567,7 +573,7 @@ export class SimpleCLI {
     console.log('  /login          - Set API key for a provider');
     console.log('  /clear          - Clear chat history');
     console.log('  /stats          - Show token usage statistics');
-    console.log('  /prompt <name>  - Load and send prompt from src/prompts/<name>.txt');
+    console.log('  /prompt <name>  - Load and send prompt from ~/.config/cli-code/prompts/<name>.txt');
     console.log('  /help           - Show this help message');
     console.log('');
   }

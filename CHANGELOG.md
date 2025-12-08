@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- 7cc3852 feat: Add /prompt command and externalize system prompts
-  - `/prompt <name>` コマンドで `src/prompts/<name>.txt` からプロンプトを読み込んで送信
-  - デフォルトシステムプロンプトを `src/prompts/default-system-prompt.txt` に外部化
+- feat: Add /prompt command and improve prompt management
+  - `/prompt <name>` コマンドで `~/.config/cli-code/prompts/<name>.txt` からユーザープロンプトを読み込んで送信
+  - デフォルトシステムプロンプトをコードに埋め込み（ビルド時に含まれる）
   - `/help` に `/prompt` コマンドを追加
+  - `src/prompts/` ディレクトリを削除
 - 670aca0 Improve multiline input handling and display newlines
 - 324fed5 fix
 - e12bc7d chore: update changelog with recent commits and cleanup,author:Assistant <assistant@example.com>

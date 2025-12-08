@@ -10,6 +10,8 @@ import { ConfigManager } from '../utils/local-settings.js';
 import { getProxyAgent, getProxyInfo } from '../utils/proxy-config.js';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import { DEFAULT_SYSTEM_PROMPT } from './default-prompt.js';
 
 interface ToolCall {
   id: string;
@@ -126,23 +128,32 @@ export class Agent {
     return agent;
   }
 
-  private loadPrompt(promptFileName: string): string {
+  /**
+   * Get the user prompts directory path: ~/.config/cli-code/prompts/
+   */
+  private getUserPromptsDir(): string {
+    return path.join(os.homedir(), '.config', 'cli-code', 'prompts');
+  }
+
+  /**
+   * Load a user prompt from ~/.config/cli-code/prompts/<name>.txt
+   * Returns null if not found.
+   */
+  public loadUserPrompt(promptName: string): string | null {
     try {
-      const promptPath = path.resolve('src', 'prompts', `${promptFileName}.txt`);
+      const promptPath = path.join(this.getUserPromptsDir(), `${promptName}.txt`);
       return fs.readFileSync(promptPath, { encoding: 'utf-8' });
-    } catch (e) {
-      console.error(`Prompt file ${promptFileName} not found, using built‑in default.`);
-      return '';
+    } catch {
+      return null;
     }
   }
 
   /**
    * Build default system message.
-   * 現在は src/prompts/default-system-prompt.txt に保存されたプロンプトを読み込む。
+   * Uses embedded default prompt (compiled into the build).
    */
   private buildDefaultSystemMessage(): string {
-    const defaultPrompt = this.loadPrompt('default-system-prompt');
-    return defaultPrompt;
+    return DEFAULT_SYSTEM_PROMPT;
   }
 
 
