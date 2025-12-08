@@ -209,7 +209,7 @@ This project is forked from [groq-code-cli](https://github.com/build-with-groq/g
 
 - **Removed React Ink** - Uses standard terminal I/O via readline instead of React Ink TUI
 - **Simplified dependencies** - No React, Ink, or related packages
-- **Added Gemini support** - Google's Gemini models are now available as a provider
+- **Added Claude support** - Anthropic's Claude models are now available as a provider
 - **fzf integration** - Model selection uses fzf for fuzzy finding (falls back to numbered list)
 
 ## License
