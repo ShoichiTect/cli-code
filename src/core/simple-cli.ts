@@ -400,45 +400,72 @@ export class SimpleCLI {
   }
 
   /**
+   * Read user input where Enter sends the line and Ctrl+J inserts a newline.
+   * Returns the full string entered by the user.
+   */
+  private readLineInput(): Promise<string> {
+    return new Promise((resolve) => {
+      const promptPrimary = chalk.cyan('> ');
+      const promptContinue = chalk.cyan('... ');
+      let buffer = '';
+
+      // Enable raw mode to capture individual keypresses
+      readline.emitKeypressEvents(process.stdin);
+      if (process.stdin.isTTY) process.stdin.setRawMode(true);
+
+      const cleanup = () => {
+        process.stdin.removeListener('keypress', onKey);
+        if (process.stdin.isTTY) process.stdin.setRawMode(false);
+      };
+
+      const onKey = (str: string, key: any) => {
+        // Ctrl+C – let the existing SIGINT handler deal with it
+        if (key.sequence === '\x03') {
+          cleanup();
+          process.emit('SIGINT');
+          return;
+        }
+        // Ctrl+J – insert a newline into the buffer (terminal already echoes the newline)
+        if (key.name === 'j' && key.ctrl) {
+          buffer += '\n';
+          return;
+        }
+        // Enter – finish input (terminal already echoes the newline)
+        if (key.name === 'return') {
+          cleanup();
+          resolve(buffer);
+          return;
+        }
+        // Backspace – remove last character from the buffer (terminal already handles visual deletion)
+        if (key.name === 'backspace' || key.name === 'delete') {
+          if (buffer.length > 0) {
+            buffer = buffer.slice(0, -1);
+          }
+          return;
+        }
+        // Printable characters – add to buffer (terminal already echoes the character)
+        if (str) {
+          buffer += str;
+        }
+      };
+
+      // Show initial prompt
+      process.stdout.write(promptPrimary);
+      process.stdin.on('keypress', onKey);
+    });
+  }
+
+  /**
    * Main chat loop
    */
   async run(): Promise<void> {
     console.log(chalk.gray('Type /help for commands, Ctrl+C to exit\n'));
 
     while (true) {
-      // Read user input, supporting multiline with trailing backslash or empty line termination
-      let rawInput = await this.question(chalk.cyan('> '));
+      // Read user input: Enter sends the line, Ctrl+J inserts a newline in the buffer
+      const rawInput = await this.readLineInput();
 
-      // If the line ends with a backslash, keep reading continuation lines (backslash method retained)
-      if (rawInput.endsWith('\\')) {
-        const lines: string[] = [rawInput.slice(0, -1)];
-        while (true) {
-          const cont = await this.question(chalk.cyan('... '));
-          if (cont.endsWith('\\')) {
-            lines.push(cont.slice(0, -1));
-          } else {
-            lines.push(cont);
-            break;
-          }
-        }
-        rawInput = lines.join('\n');
-      } else {
-        // Support multiline input without backslashes: keep reading lines until an empty line is entered
-        const lines: string[] = [rawInput];
-        while (true) {
-          const cont = await this.question(chalk.cyan('... '));
-          // Empty line signals end of multiline input
-          if (cont.trim() === '') {
-            break;
-          }
-          lines.push(cont);
-        }
-        // If more than one line was entered, join with newlines
-        if (lines.length > 1) {
-          rawInput = lines.join('\n');
-        }
-      }
-
+      // Convert escaped '\n' literals to real newlines for processing
       const input = rawInput.replace(/\\n/g, '\n');
 
       if (!input.trim()) continue;
