@@ -185,20 +185,19 @@ export class SimpleCLI {
 
     // Dangerous tools don't get auto-approve option
     if (isDangerous) {
-      const answer = await this.question(chalk.cyan('[y]es / [n]o: '));
-      const choice = answer.toLowerCase().trim();
-      return { approved: choice === 'y' || choice === 'yes' };
+      const selection = await selectWithFzf(['yes', 'no'], 'Confirm');
+      if (!selection) return { approved: false };
+      const choice = selection.toLowerCase().trim();
+      return { approved: choice === 'yes' };
     }
 
     // Normal tools get auto-approve option
-    const answer = await this.question(
-      chalk.cyan('[y]es / [n]o / [a]ll session: ')
-    );
-    const choice = answer.toLowerCase().trim();
-
-    if (choice === 'y' || choice === 'yes') {
+    const selection = await selectWithFzf(['yes', 'no', 'all'], 'Confirm');
+    if (!selection) return { approved: false };
+    const choice = selection.toLowerCase().trim();
+    if (choice === 'yes') {
       return { approved: true };
-    } else if (choice === 'a' || choice === 'all') {
+    } else if (choice === 'all') {
       return { approved: true, autoApproveSession: true };
     }
     return { approved: false };
@@ -405,7 +404,24 @@ export class SimpleCLI {
     console.log(chalk.gray('Type /help for commands, Ctrl+C to exit\n'));
 
     while (true) {
-      const input = await this.question(chalk.cyan('> '));
+      // Read user input, supporting multiline with trailing backslash
+      let rawInput = await this.question(chalk.cyan('> '));
+      // If the line ends with a backslash, keep reading continuation lines
+      if (rawInput.endsWith('\\')) {
+        const lines: string[] = [rawInput.slice(0, -1)];
+        while (true) {
+          const cont = await this.question(chalk.cyan('... '));
+          if (cont.endsWith('\\')) {
+            lines.push(cont.slice(0, -1));
+          } else {
+            lines.push(cont);
+            break;
+          }
+        }
+        rawInput = lines.join('\n');
+      }
+
+      const input = rawInput;
 
       if (!input.trim()) continue;
 

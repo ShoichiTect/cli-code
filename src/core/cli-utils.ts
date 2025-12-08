@@ -76,21 +76,12 @@ export async function selectWithNumbers(
 }
 
 /**
- * Simple Y/n confirmation prompt
+ * Simple Y/n confirmation prompt using fzf selection
  */
 export async function confirmPrompt(message: string): Promise<boolean> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(`${message} [Y/n]: `, (answer) => {
-      rl.close();
-      const normalized = answer.toLowerCase().trim();
-      resolve(normalized !== 'n' && normalized !== 'no');
-    });
-  });
+  const selection = await selectWithFzf(['yes', 'no'], message);
+  if (!selection) return false;
+  return selection.toLowerCase() === 'yes';
 }
 
 /**
