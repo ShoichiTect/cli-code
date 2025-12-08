@@ -15,32 +15,8 @@ export async function selectWithFzf(
   options: string[],
   prompt?: string
 ): Promise<string | null> {
-  // Check if fzf is available
-  try {
-    execSync('which fzf', { stdio: 'ignore' });
-  } catch {
-    // fzf not available, fall back to number selection
-    return selectWithNumbers(options, prompt);
-  }
-
-  try {
-    const args = ['--height=40%', '--reverse'];
-    if (prompt) {
-      args.push(`--header=${prompt}`);
-    }
-
-    const result = spawnSync('fzf', args, {
-      input: options.join('\n'),
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'inherit'],
-    });
-
-    const selected = result.stdout?.trim();
-    return selected || null;
-  } catch {
-    // Fall back to number selection on any error
-    return selectWithNumbers(options, prompt);
-  }
+  // Default to fallback number selection (no fzf usage)
+  return selectWithNumbers(options, prompt);
 }
 
 /**
@@ -50,29 +26,71 @@ export async function selectWithNumbers(
   options: string[],
   prompt?: string
 ): Promise<string | null> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  // Immediate selection by pressing the number key (no need to press Enter)
+  // Uses raw mode and keypress events to capture a single digit.
+  // Falls back to a simple prompt if raw mode cannot be enabled.
+  try {
+    // Ensure keypress events are emitted
+    readline.emitKeypressEvents(process.stdin);
+    const wasTTY = process.stdin.isTTY;
+    if (wasTTY) process.stdin.setRawMode(true);
 
-  return new Promise((resolve) => {
-    if (prompt) {
-      console.log(`\n${prompt}:`);
-    }
-    options.forEach((opt, i) => {
-      console.log(`  ${i + 1}. ${opt}`);
-    });
-
-    rl.question('Enter number: ', (answer) => {
-      rl.close();
-      const index = parseInt(answer, 10) - 1;
-      if (index >= 0 && index < options.length) {
-        resolve(options[index]);
-      } else {
-        resolve(null);
+    return new Promise((resolve) => {
+      if (prompt) {
+        console.log(`\n${prompt}:`);
       }
+      options.forEach((opt, i) => {
+        console.log(`  ${i + 1}. ${opt}`);
+      });
+      console.log('Press the number of your choice (or Ctrl+C to cancel)');
+
+      const onKey = (str: string, key: any) => {
+        // Handle Ctrl+C
+        if (key.sequence === '\x03') {
+          cleanup();
+          resolve(null);
+          return;
+        }
+        // Accept digits 1-9 (or more if needed)
+        const digit = Number(str);
+        if (!isNaN(digit) && Number.isInteger(digit) && digit >= 1 && digit <= options.length) {
+          cleanup();
+          resolve(options[digit - 1]);
+        }
+      };
+
+      const cleanup = () => {
+        process.stdin.removeListener('keypress', onKey);
+        if (wasTTY) process.stdin.setRawMode(false);
+      };
+
+      process.stdin.on('keypress', onKey);
     });
-  });
+  } catch (e) {
+    // If any error occurs (e.g., raw mode not supported), fall back to readline question
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    return new Promise((resolve) => {
+      if (prompt) {
+        console.log(`\n${prompt}:`);
+      }
+      options.forEach((opt, i) => {
+        console.log(`  ${i + 1}. ${opt}`);
+      });
+
+      rl.question('Enter number: ', (answer) => {
+        rl.close();
+        const index = parseInt(answer, 10) - 1;
+        if (index >= 0 && index < options.length) {
+          resolve(options[index]);
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
 }
 
 /**
