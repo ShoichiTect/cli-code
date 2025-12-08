@@ -12,6 +12,9 @@
 - e12bc7d chore: update changelog with recent commits and cleanup,author:Assistant <assistant@example.com>
 - 974d7ff chore: Remove docs directory with groq-code assets
 - 59f1f0b refactor: Remove React Ink UI, rename to CLI Code
+- bacbc3f refactor: Embed default prompt and use ~/.config/cli-code/prompts/ for user prompts
+- 992d8c5 fix: remove deprecated command definitions and related files
+- e7d216d fix: extensive test and utils cleanup
 
 ## [0.1.1] - 2025-12-08
 
