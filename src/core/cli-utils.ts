@@ -1,6 +1,6 @@
 /**
  * CLI Utilities for Simple CLI
- * - fzf selection with fallback to number selection
+ * - number selection (fzf removed)
  * - Confirmation prompts
  * - ASCII spinner with elapsed time
  */
@@ -11,14 +11,6 @@ import * as readline from 'readline';
 /**
  * Select an option using fzf if available, otherwise fall back to number selection
  */
-export async function selectWithFzf(
-  options: string[],
-  prompt?: string
-): Promise<string | null> {
-  // Default to fallback number selection (no fzf usage)
-  return selectWithNumbers(options, prompt);
-}
-
 /**
  * Select an option using number input (fallback when fzf is not available)
  */
@@ -97,7 +89,7 @@ export async function selectWithNumbers(
  * Simple Y/n confirmation prompt using fzf selection
  */
 export async function confirmPrompt(message: string): Promise<boolean> {
-  const selection = await selectWithFzf(['yes', 'no'], message);
+  const selection = await selectWithNumbers(['yes', 'no'], message);
   if (!selection) return false;
   return selection.toLowerCase() === 'yes';
 }

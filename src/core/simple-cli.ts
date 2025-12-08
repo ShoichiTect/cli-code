@@ -9,10 +9,10 @@ import * as path from 'path';
 import chalk from 'chalk';
 import { Agent } from './agent.js';
 import {
-  selectWithFzf,
   confirmPrompt,
   createSpinner,
   Spinner,
+  selectWithNumbers,
 } from './cli-utils.js';
 import {
   printColoredDiff,
@@ -187,14 +187,14 @@ export class SimpleCLI {
 
     // Dangerous tools don't get auto-approve option
     if (isDangerous) {
-      const selection = await selectWithFzf(['yes', 'no'], 'Confirm');
+      const selection = await selectWithNumbers(['yes', 'no'], 'Confirm');
       if (!selection) return { approved: false };
       const choice = selection.toLowerCase().trim();
       return { approved: choice === 'yes' };
     }
 
     // Normal tools get auto-approve option
-    const selection = await selectWithFzf(['yes', 'no', 'all'], 'Confirm');
+    const selection = await selectWithNumbers(['yes', 'no', 'all'], 'Confirm');
     if (!selection) return { approved: false };
     const choice = selection.toLowerCase().trim();
     if (choice === 'yes') {
@@ -562,7 +562,7 @@ export class SimpleCLI {
   }
 
   /**
-   * Select model using fzf or number selection
+   * Select model using number selection
    */
   private async selectModel(): Promise<void> {
     // Build model list with provider prefixes
@@ -573,7 +573,7 @@ export class SimpleCLI {
       }
     }
 
-    const selected = await selectWithFzf(modelList, 'Select model');
+    const selected = await selectWithNumbers(modelList, 'Select model');
 
     if (selected) {
       const [provider, model] = selected.split(':');
@@ -587,7 +587,7 @@ export class SimpleCLI {
    */
   private async login(): Promise<void> {
     const providers = ['groq', 'anthropic', 'gemini'];
-    const selected = await selectWithFzf(providers, 'Select provider');
+    const selected = await selectWithNumbers(providers, 'Select provider');
 
     if (!selected) return;
 
