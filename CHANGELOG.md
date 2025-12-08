@@ -7,4 +7,7 @@
 - e12bc7d chore: update changelog with recent commits and cleanup,author:Assistant <assistant@example.com>
 - 974d7ff chore: Remove docs directory with groq-code assets
 - 59f1f0b refactor: Remove React Ink UI, rename to CLI Code
+
+## [0.1.1] - 2025-12-08
+
 - 08c7be6 Refactor cli-utils: remove fzf dependency and improve number selection UI

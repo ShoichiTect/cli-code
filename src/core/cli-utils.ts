@@ -37,10 +37,22 @@ export async function selectWithNumbers(
       console.log('Press the number of your choice (or Ctrl+C to cancel)');
 
       const onKey = (str: string, key: any) => {
-        // Handle Ctrl+C
+        // Handle Ctrl+C (select second option if available)
         if (key.sequence === '\x03') {
           cleanup();
-          resolve(null);
+          resolve(options.length >= 2 ? options[1] : null);
+          return;
+        }
+        // Handle Escape key (select second option if available)
+        if (key.name === 'escape' || key.sequence === '\x1B') {
+          cleanup();
+          resolve(options.length >= 2 ? options[1] : null);
+          return;
+        }
+        // Handle Enter key: select first option as default
+        if (key.name === 'return' || key.sequence === '\r' || key.sequence === '\n') {
+          cleanup();
+          resolve(options[0]);
           return;
         }
         // Accept digits 1-9 (or more if needed)
