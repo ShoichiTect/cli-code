@@ -127,7 +127,7 @@ export class Agent {
   }
 
   private buildDefaultSystemMessage(): string {
-    return `あなたは Groq 上で動作するコーディング支援エージェントです。
+    return `あなたは ターミナル 上で動作するコーディング支援エージェントです。
 出力はすべて **日本語で** 行ってください。
 
 【基本方針】
