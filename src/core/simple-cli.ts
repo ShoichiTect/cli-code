@@ -115,7 +115,9 @@ export class SimpleCLI {
         if (reasoning) {
           console.log(chalk.dim.italic(reasoning));
         }
-        console.log(this.formatMarkdown(content));
+        // Convert literal \n to actual newlines for display
+        const displayed = content.replace(/\\n/g, '\n');
+        console.log(this.formatMarkdown(displayed));
       },
 
       onToolStart: (name: string, args: Record<string, any>) => {
@@ -404,9 +406,10 @@ export class SimpleCLI {
     console.log(chalk.gray('Type /help for commands, Ctrl+C to exit\n'));
 
     while (true) {
-      // Read user input, supporting multiline with trailing backslash
+      // Read user input, supporting multiline with trailing backslash or empty line termination
       let rawInput = await this.question(chalk.cyan('> '));
-      // If the line ends with a backslash, keep reading continuation lines
+
+      // If the line ends with a backslash, keep reading continuation lines (backslash method retained)
       if (rawInput.endsWith('\\')) {
         const lines: string[] = [rawInput.slice(0, -1)];
         while (true) {
@@ -419,9 +422,24 @@ export class SimpleCLI {
           }
         }
         rawInput = lines.join('\n');
+      } else {
+        // Support multiline input without backslashes: keep reading lines until an empty line is entered
+        const lines: string[] = [rawInput];
+        while (true) {
+          const cont = await this.question(chalk.cyan('... '));
+          // Empty line signals end of multiline input
+          if (cont.trim() === '') {
+            break;
+          }
+          lines.push(cont);
+        }
+        // If more than one line was entered, join with newlines
+        if (lines.length > 1) {
+          rawInput = lines.join('\n');
+        }
       }
 
-      const input = rawInput;
+      const input = rawInput.replace(/\\n/g, '\n');
 
       if (!input.trim()) continue;
 
