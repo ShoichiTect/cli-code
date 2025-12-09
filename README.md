@@ -51,19 +51,24 @@ Options:
 
 On first use, start a chat with `cli` and type the `/login` command to configure your API key.
 
-You can choose between **Groq**, **Anthropic**, or **Gemini** as your AI provider:
+The CLI now supports **OpenAI‑compatible** API calls for all providers. When using the OpenAI format, the underlying Groq SDK is still used, so you must set the appropriate endpoint (e.g., `https://api.openai.com/v1` for OpenAI) via the `OPENAI_API_BASE` environment variable or in the configuration.
+
+You can choose between **Groq**, **Anthropic**, **Gemini**, or **OpenAI** as your AI provider:
 
 - **Groq**: Get your API key from the [Groq Console](https://console.groq.com/keys)
 - **Anthropic**: Get your API key from the [Anthropic Console](https://console.anthropic.com/keys)
 - **Gemini**: Get your API key from [Google AI Studio](https://aistudio.google.com/apikey)
+- **OpenAI**: Get your API key from the [OpenAI Platform](https://platform.openai.com/account/api-keys)
 
-This creates a .groq/ folder in your home directory that stores your API keys, default model selection, and any other config you wish to add.
+This creates a `.groq/` folder in your home directory that stores your API keys, default model selection, and any other config you wish to add.
 
 You can also set your API keys via environment variables:
 ```bash
 export GROQ_API_KEY=your_groq_api_key_here
 export ANTHROPIC_API_KEY=your_anthropic_api_key_here
 export GEMINI_API_KEY=your_gemini_api_key_here
+export OPENAI_API_KEY=your_openai_api_key_here
+export OPENAI_API_BASE=https://api.openai.com/v1   # required when using OpenAI format
 ```
 
 ### Proxy Configuration
