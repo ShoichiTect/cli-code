@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- refactor: デフォルトシステムプロンプトを「コード分析・学習支援エージェント」に変更
+  - 役割を「コード実装」から「コードベース調査・分析・デバッグ支援・学習支援」に変更
+  - ユーザーの理解を優先し、修正前に方針・理由を説明して許可を取るフローに
+  - 複数の解決策がある場合はトレードオフを含めて提示
+  - 「なぜ」を常に意識した説明スタイルに
 - fix: create_tasks と update_tasks ツールを完全削除
 - feat: Add /prompt command and improve prompt management
   - `/prompt <name>` コマンドで `~/.config/cli-code/prompts/<name>.txt` からユーザープロンプトを読み込んで送信
