@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix: create_tasks と update_tasks ツールを完全削除
 - feat: Add /prompt command and improve prompt management
   - `/prompt <name>` コマンドで `~/.config/cli-code/prompts/<name>.txt` からユーザープロンプトを読み込んで送信
   - デフォルトシステムプロンプトをコードに埋め込み（ビルド時に含まれる）
