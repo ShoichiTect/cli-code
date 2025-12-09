@@ -36,27 +36,6 @@ export interface ToolResult {
   error?: string;
 }
 
-interface TaskUpdate {
-  id: string;
-  status: 'pending' | 'in_progress' | 'completed';
-  notes?: string;
-}
-
-interface Task {
-  id: string;
-  description: string;
-  status: 'pending' | 'in_progress' | 'completed';
-  notes?: string;
-  updated_at?: string;
-}
-
-// Global task state
-let currentTaskList: {
-  user_query: string;
-  tasks: Task[];
-  created_at: string;
-} | null = null;
-
 // Track which files have been read in the current session
 const readFiles = new Set<string>();
 
@@ -82,8 +61,6 @@ export function formatToolParams(toolName: string, toolArgs: Record<string, any>
     list_files: ['directory'],
     search_files: ['pattern'],
     execute_command: ['command'],
-    create_tasks: [],
-    update_tasks: [],
   };
 
   const keyParams = paramMappings[toolName] || [];
@@ -683,131 +660,6 @@ export async function executeCommand(command: string, commandType: string, worki
   }
 }
 
-/**
- * Create a task list of subtasks to complete the user's request
- */
-export async function createTasks(userQuery: string, tasks: Task[]): Promise<ToolResult> {
-  try {
-    // Validate task structure
-    for (let i = 0; i < tasks.length; i++) {
-      const task = tasks[i];
-      if (!task.id || !task.description) {
-        return createToolResponse(false, undefined, '', `Error: Task ${i} missing required fields (id, description)`);
-      }
-
-      // Set default status if not provided
-      if (!task.status) {
-        task.status = 'pending';
-      }
-
-      // Validate status
-      if (!['pending', 'in_progress', 'completed'].includes(task.status)) {
-        return createToolResponse(false, undefined, '', `Error: Invalid status '${task.status}' for task ${task.id}`);
-      }
-    }
-
-    // Store the task list globally
-    currentTaskList = {
-      user_query: userQuery,
-      tasks: tasks,
-      created_at: new Date().toISOString()
-    };
-
-
-    // Return a deep copy to prevent mutation of historical displays
-    const snapshot = {
-      user_query: currentTaskList.user_query,
-      tasks: currentTaskList.tasks.map(task => ({ ...task })),
-      created_at: currentTaskList.created_at
-    };
-
-    return createToolResponse(
-      true,
-      snapshot,
-      `Created task list with ${tasks.length} tasks for: ${userQuery}`
-    );
-
-  } catch (error) {
-    return createToolResponse(false, undefined, '', `Error: Failed to create tasks - ${error}`);
-  }
-}
-
-/**
- * Update the status of one or more tasks in the task list
- */
-export async function updateTasks(taskUpdates: TaskUpdate[]): Promise<ToolResult> {
-  try {
-    if (!currentTaskList) {
-      return createToolResponse(false, undefined, '', 'Error: No task list exists. Create tasks first.');
-    }
-
-    // Track updates made
-    const updatesMade: Array<{
-      id: string;
-      description: string;
-      old_status: string;
-      new_status: string;
-    }> = [];
-
-    for (const update of taskUpdates) {
-      if (!update.id || !update.status) {
-        return createToolResponse(false, undefined, '', 'Error: Task update missing required fields (id, status)');
-      }
-
-      // Validate status
-      if (!['pending', 'in_progress', 'completed'].includes(update.status)) {
-        return createToolResponse(false, undefined, '', `Error: Invalid status '${update.status}'`);
-      }
-
-      // Find and update the task
-      let taskFound = false;
-      for (const task of currentTaskList.tasks) {
-        if (task.id === update.id) {
-          const oldStatus = task.status;
-          task.status = update.status;
-
-          // Add notes if provided
-          if (update.notes) {
-            task.notes = update.notes;
-          }
-
-          // Add update timestamp
-          task.updated_at = new Date().toISOString();
-
-          updatesMade.push({
-            id: update.id,
-            description: task.description,
-            old_status: oldStatus,
-            new_status: update.status
-          });
-          taskFound = true;
-          break;
-        }
-      }
-
-      if (!taskFound) {
-        return createToolResponse(false, undefined, '', `Error: Task '${update.id}' not found`);
-      }
-    }
-
-    // Return a deep copy to prevent mutation of historical displays
-    const snapshot = {
-      user_query: currentTaskList.user_query,
-      tasks: currentTaskList.tasks.map(task => ({ ...task })),
-      created_at: currentTaskList.created_at
-    };
-
-    return createToolResponse(
-      true,
-      snapshot,
-      `Updated ${updatesMade.length} task(s)`
-    );
-
-  } catch (error) {
-    return createToolResponse(false, undefined, '', `Error: Failed to update tasks - ${error}`);
-  }
-}
-
 // Tool Registry: maps tool names to functions
 export const TOOL_REGISTRY = {
   read_file: readFile,
@@ -817,8 +669,6 @@ export const TOOL_REGISTRY = {
   list_files: listFiles,
   search_files: searchFiles,
   execute_command: executeCommand,
-  create_tasks: createTasks,
-  update_tasks: updateTasks,
 };
 
 /**
@@ -875,12 +725,6 @@ export async function executeTool(toolName: string, toolArgs: Record<string, any
         break;
       case 'execute_command':
         result = await toolFunction(toolArgs.command, toolArgs.command_type, toolArgs.working_directory, toolArgs.timeout);
-        break;
-      case 'create_tasks':
-        result = await toolFunction(toolArgs.user_query, toolArgs.tasks);
-        break;
-      case 'update_tasks':
-        result = await toolFunction(toolArgs.task_updates);
         break;
       default:
         result = createToolResponse(false, undefined, '', 'Error: Tool not implemented');
