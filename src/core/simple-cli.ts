@@ -280,10 +280,7 @@ export class SimpleCLI {
         }
         break;
 
-      case 'create_tasks':
-      case 'update_tasks':
-        this.printTasks(result.content?.tasks || []);
-        break;
+
 
       default:
         if (result.message) {
