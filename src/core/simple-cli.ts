@@ -403,8 +403,9 @@ export class SimpleCLI {
   private readLineInput(): Promise<string> {
     return new Promise((resolve) => {
       const promptPrimary = chalk.cyan('> ');
-      const promptContinue = chalk.cyan('... ');
       let buffer = '';
+      let lastKeyTime = 0;
+      let pendingEnterTimeout: NodeJS.Timeout | null = null;
 
       // Enable raw mode to capture individual keypresses
       readline.emitKeypressEvents(process.stdin);
@@ -413,35 +414,63 @@ export class SimpleCLI {
       const cleanup = () => {
         process.stdin.removeListener('keypress', onKey);
         if (process.stdin.isTTY) process.stdin.setRawMode(false);
+        if (pendingEnterTimeout) {
+          clearTimeout(pendingEnterTimeout);
+          pendingEnterTimeout = null;
+        }
+      };
+
+      const finishInput = () => {
+        cleanup();
+        resolve(buffer);
       };
 
       const onKey = (str: string, key: any) => {
+        const now = Date.now();
+        const timeSinceLastKey = now - lastKeyTime;
+        lastKeyTime = now;
+
+        // Clear any pending enter timeout since we got more input
+        if (pendingEnterTimeout) {
+          clearTimeout(pendingEnterTimeout);
+          pendingEnterTimeout = null;
+        }
+
         // Ctrl+C – let the existing SIGINT handler deal with it
         if (key.sequence === '\x03') {
           cleanup();
           process.emit('SIGINT');
           return;
         }
-        // Ctrl+J – insert a newline into the buffer (terminal already echoes the newline)
+        // Ctrl+J – insert a newline into the buffer
         if (key.name === 'j' && key.ctrl) {
           buffer += '\n';
           return;
         }
-        // Enter – finish input (terminal already echoes the newline)
+        // Enter/Return key
         if (key.name === 'return') {
-          cleanup();
-          resolve(buffer);
+          // If this Enter comes quickly after other input (< 50ms), it's likely part of a paste
+          // In that case, add newline to buffer and wait for more input
+          if (timeSinceLastKey < 50 && buffer.length > 0) {
+            buffer += '\n';
+            // Set a timeout to finish input if no more keys come
+            pendingEnterTimeout = setTimeout(finishInput, 100);
+            return;
+          }
+          // Otherwise, it's a manual Enter - finish input
+          finishInput();
           return;
         }
-        // Backspace – remove last character from the buffer (terminal already handles visual deletion)
+        // Backspace – remove last character from the buffer
         if (key.name === 'backspace' || key.name === 'delete') {
           if (buffer.length > 0) {
             buffer = buffer.slice(0, -1);
           }
           return;
         }
-        // Printable characters – add to buffer (terminal already echoes the character)
-        if (str) {
+        // Printable characters – add to buffer
+        // Exclude standalone newline/carriage return (handled by 'return' key)
+        if (str && str !== '\n' && str !== '\r') {
           buffer += str;
         }
       };
