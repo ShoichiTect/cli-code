@@ -655,7 +655,13 @@ export class SimpleCLI {
 
     console.log(chalk.dim(`Get your API key from: ${providerUrls[selected]}`));
 
-    const apiKey = await this.question(chalk.cyan('API Key: '));
+    let apiKey = await this.question(chalk.cyan('API Key: '));
+
+    // selectWithNumbers で押した数字が末尾に残るバグの対処
+    const selectedIndex = providers.indexOf(selected) + 1;
+    if (apiKey.endsWith(String(selectedIndex))) {
+      apiKey = apiKey.slice(0, -1);
+    }
 
     if (apiKey.trim()) {
       this.agent.saveApiKey(apiKey.trim(), selected as 'groq' | 'anthropic' | 'gemini');

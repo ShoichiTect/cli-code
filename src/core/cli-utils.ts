@@ -65,7 +65,9 @@ export async function selectWithNumbers(
 
       const cleanup = () => {
         process.stdin.removeListener('keypress', onKey);
-        if (wasTTY) process.stdin.setRawMode(false);
+        if (wasTTY) {
+          process.stdin.setRawMode(false);
+        }
       };
 
       process.stdin.on('keypress', onKey);
