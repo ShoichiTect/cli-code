@@ -546,33 +546,58 @@ export class Agent {
               }
             ];
 
-            const conversationMessages = this.messages
-              .filter(msg => msg.role !== 'system')
-              .map(msg => {
+            // 会話履歴をAnthropic形式に変換（最新メッセージ以外をキャッシュ対象にする）
+            const filteredMessages = this.messages.filter(msg => msg.role !== 'system');
+            const conversationMessages = filteredMessages.map((msg, index) => {
+                // 最新メッセージの1つ前（＝最後のやり取り）にcache_controlを付与
+                // これにより、過去の会話履歴全体がキャッシュ対象になる
+                const isLastCacheable = index === filteredMessages.length - 2;
+
                 if (msg.role === 'tool') {
                   // Anthropicではtoolロールは"user"として扱い、tool_result形式にする
+                  const toolResult: any = {
+                    type: 'tool_result' as const,
+                    tool_use_id: msg.tool_call_id!,
+                    content: msg.content
+                  };
+                  if (isLastCacheable) {
+                    toolResult.cache_control = { type: 'ephemeral' as const };
+                  }
                   return {
                     role: 'user' as const,
-                    content: [
-                      {
-                        type: 'tool_result' as const,
-                        tool_use_id: msg.tool_call_id!,
-                        content: msg.content
-                      }
-                    ]
+                    content: [toolResult]
                   };
                 } else if (msg.role === 'assistant' && msg.tool_calls) {
                   // Tool callsをAnthropicのtool_use形式に変換
-                  return {
-                    role: 'assistant' as const,
-                    content: msg.tool_calls.map((tc: any) => ({
+                  const toolUses = msg.tool_calls.map((tc: any, tcIndex: number) => {
+                    const toolUse: any = {
                       type: 'tool_use' as const,
                       id: tc.id,
                       name: tc.function.name,
                       input: JSON.parse(tc.function.arguments)
-                    }))
+                    };
+                    // 最後のtool_useにcache_controlを付与
+                    if (isLastCacheable && tcIndex === msg.tool_calls!.length - 1) {
+                      toolUse.cache_control = { type: 'ephemeral' as const };
+                    }
+                    return toolUse;
+                  });
+                  return {
+                    role: 'assistant' as const,
+                    content: toolUses
                   };
                 } else {
+                  // テキストメッセージ
+                  if (isLastCacheable) {
+                    return {
+                      role: msg.role as 'user' | 'assistant',
+                      content: [{
+                        type: 'text' as const,
+                        text: msg.content,
+                        cache_control: { type: 'ephemeral' as const }
+                      }]
+                    };
+                  }
                   return {
                     role: msg.role as 'user' | 'assistant',
                     content: msg.content
