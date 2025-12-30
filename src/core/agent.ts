@@ -605,6 +605,23 @@ export class Agent {
                 }
               });
 
+            // Prepare request body for curl logging
+            const anthropicRequestBody = {
+              model: this.model,
+              system: systemMessages,
+              messages: conversationMessages,
+              tools: anthropicTools,
+              max_tokens: 8000,
+              temperature: this.temperature
+            };
+
+            // Log equivalent curl command
+            this.requestCount++;
+            const curlCommand = generateCurlCommand(this.apiKey!, anthropicRequestBody, this.requestCount, 'anthropic');
+            if (curlCommand) {
+              debugLog('Equivalent curl command:', curlCommand);
+            }
+
             this.currentAbortController = new AbortController();
 
             const response = await (this.client as Anthropic).messages.create({
@@ -1182,20 +1199,31 @@ function debugLog(message: string, data?: any) {
   fs.appendFileSync(DEBUG_LOG_FILE, logEntry);
 }
 
-function generateCurlCommand(apiKey: string, requestBody: any, requestCount: number): string {
+function generateCurlCommand(apiKey: string, requestBody: any, requestCount: number, provider: 'groq' | 'anthropic' | 'gemini' = 'groq'): string {
   if (!debugEnabled) return '';
-  
+
   const maskedApiKey = `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 8)}`;
-  
+
   // Write request body to JSON file
   const jsonFileName = `debug-request-${requestCount}.json`;
   const jsonFilePath = path.join(process.cwd(), jsonFileName);
   fs.writeFileSync(jsonFilePath, JSON.stringify(requestBody, null, 2));
-  
-  const curlCmd = `curl -X POST "https://api.groq.com/openai/v1/chat/completions" \\
+
+  let curlCmd: string;
+
+  if (provider === 'anthropic') {
+    curlCmd = `curl -X POST "https://api.anthropic.com/v1/messages" \\
+  -H "x-api-key: ${maskedApiKey}" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -H "Content-Type: application/json" \\
+  -d @${jsonFileName}`;
+  } else {
+    // Groq (default)
+    curlCmd = `curl -X POST "https://api.groq.com/openai/v1/chat/completions" \\
   -H "Authorization: Bearer ${maskedApiKey}" \\
   -H "Content-Type: application/json" \\
   -d @${jsonFileName}`;
-  
+  }
+
   return curlCmd;
 }
