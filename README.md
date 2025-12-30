@@ -220,3 +220,6 @@ This project is forked from [groq-code-cli](https://github.com/build-with-groq/g
 ## License
 
 MIT
+
+## 次やること
+https://docs.google.com/document/d/1M7NvfxN2vDAVJ8xyvD1dADusSqjN2RBa/edit?usp=sharing&ouid=112696806737041576974&rtpof=true&sd=true
