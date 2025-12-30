@@ -5,3 +5,4 @@ dist
 coverage
 .test-*
 debug-agent.log
+debug-request-*.json
