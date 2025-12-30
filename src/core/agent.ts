@@ -526,10 +526,25 @@ export class Agent {
             debugLog('Messages count:', this.messages.length);
 
             // Anthropic用にメッセージを変換（systemロールを分離）
-            const systemMessages = this.messages
+            const systemContent = this.messages
               .filter(msg => msg.role === 'system')
               .map(msg => msg.content)
               .join('\n\n');
+
+            // システムプロンプトとツール定義をキャッシュ対象として配列形式で構築
+            const anthropicTools = convertAllToolSchemasForAnthropic(ALL_TOOL_SCHEMAS);
+            const systemMessages = [
+              {
+                type: 'text' as const,
+                text: systemContent,
+                cache_control: { type: 'ephemeral' as const }
+              },
+              {
+                type: 'text' as const,
+                text: '\n\n## Available Tools\n\n' + JSON.stringify(anthropicTools, null, 2),
+                cache_control: { type: 'ephemeral' as const }
+              }
+            ];
 
             const conversationMessages = this.messages
               .filter(msg => msg.role !== 'system')
@@ -565,15 +580,13 @@ export class Agent {
                 }
               });
 
-            const anthropicTools = convertAllToolSchemasForAnthropic(ALL_TOOL_SCHEMAS);
-
             this.currentAbortController = new AbortController();
 
             const response = await (this.client as Anthropic).messages.create({
               model: this.model,
               system: systemMessages,
               messages: conversationMessages as any,
-              tools: anthropicTools,
+              tools: anthropicTools,  // ツール定義はsystemにも含まれているが、API呼び出しにも必要
               max_tokens: 8000,
               temperature: this.temperature
             }, {
@@ -581,6 +594,17 @@ export class Agent {
             });
 
             debugLog('Full Anthropic API response received:', response);
+
+            // Log cache information explicitly
+            if (response.usage) {
+              const usage = response.usage as any;
+              debugLog('Anthropic API Usage:', {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
+                cache_read_input_tokens: usage.cache_read_input_tokens || 0,
+              });
+            }
 
             // Pass usage data to callback if available
             if (response.usage && this.onApiUsage) {
