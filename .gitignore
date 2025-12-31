@@ -6,3 +6,6 @@ coverage
 .test-*
 debug-agent.log
 debug-request-*.json
+
+# Personal learning notes
+docs/personal/
