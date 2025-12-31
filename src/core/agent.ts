@@ -301,29 +301,41 @@ export class Agent {
     console.log(chalk.yellow(`[DEBUG] configManager.setDefaultModel("${model}") 実行`));
 
     // [Issue #11 修正] provider が指定されていれば保存し、クライアントも再初期化
-    if (provider && provider !== this.provider) {
-      console.log(chalk.yellow(`[DEBUG] provider が変更されました: "${this.provider}" → "${provider}"`));
-      this.configManager.setProvider(provider);
+    // 注意: this.provider（メモリ上の値）ではなく、設定ファイルの値と比較する
+    const savedProvider = this.configManager.getProvider();
+    console.log(chalk.gray(`  設定ファイルの provider: "${savedProvider || '(未設定)'}"`));
 
-      // 新しい provider に対応する API キーを取得してクライアントを再初期化
-      let apiKey: string | null = null;
-      if (provider === 'groq') {
-        apiKey = this.configManager.getApiKey();
-      } else if (provider === 'anthropic') {
-        apiKey = this.configManager.getAnthropicApiKey();
-      } else if (provider === 'gemini') {
-        apiKey = this.configManager.getGeminiApiKey();
+    if (provider) {
+      // 設定ファイルの provider と異なる場合は保存
+      if (provider !== savedProvider) {
+        console.log(chalk.yellow(`[DEBUG] provider が変更されました（設定ファイル）: "${savedProvider}" → "${provider}"`));
+        this.configManager.setProvider(provider);
       }
 
-      if (apiKey) {
-        console.log(chalk.green(`[DEBUG] ✓ ${provider} の API クライアントを再初期化`));
-        this.setApiKey(apiKey, provider);
+      // メモリ上の provider と異なる場合はクライアント再初期化
+      if (provider !== this.provider) {
+        console.log(chalk.yellow(`[DEBUG] provider が変更されました（メモリ）: "${this.provider}" → "${provider}"`));
+
+        // 新しい provider に対応する API キーを取得してクライアントを再初期化
+        let apiKey: string | null = null;
+        if (provider === 'groq') {
+          apiKey = this.configManager.getApiKey();
+        } else if (provider === 'anthropic') {
+          apiKey = this.configManager.getAnthropicApiKey();
+        } else if (provider === 'gemini') {
+          apiKey = this.configManager.getGeminiApiKey();
+        }
+
+        if (apiKey) {
+          console.log(chalk.green(`[DEBUG] ✓ ${provider} の API クライアントを再初期化`));
+          this.setApiKey(apiKey, provider);
+        } else {
+          console.log(chalk.red(`[DEBUG] ⚠️ ${provider} の API キーが設定されていません`));
+          this.provider = provider; // provider だけは更新
+        }
       } else {
-        console.log(chalk.red(`[DEBUG] ⚠️ ${provider} の API キーが設定されていません`));
-        this.provider = provider; // provider だけは更新
+        console.log(chalk.gray(`[DEBUG] メモリ上の provider は同じなので再初期化不要`));
       }
-    } else if (provider) {
-      console.log(chalk.gray(`[DEBUG] provider は同じなので変更なし`));
     } else {
       console.log(chalk.yellow(`[DEBUG] provider は未指定のため更新されません`));
     }
