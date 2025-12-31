@@ -643,6 +643,8 @@ export class SimpleCLI {
    * Select model using number selection
    */
   private async selectModel(): Promise<void> {
+    console.log(chalk.cyan('[DEBUG] selectModel() called'));
+
     // Build model list with provider prefixes
     const modelList: string[] = [];
     for (const [provider, models] of Object.entries(MODELS)) {
@@ -652,10 +654,13 @@ export class SimpleCLI {
     }
 
     const selected = await selectWithNumbers(modelList, 'Select model');
+    console.log(chalk.gray(`[DEBUG] selected: "${selected}"`));
 
     if (selected) {
       const [provider, model] = selected.split(':');
-      this.agent.setModel(model);
+      console.log(chalk.yellow(`[DEBUG] 分解結果: provider="${provider}", model="${model}"`));
+      // [Issue #11 修正] provider も一緒に渡す
+      this.agent.setModel(model, provider as 'groq' | 'anthropic' | 'gemini');
       console.log(chalk.green(` Switched to ${model} (${provider})`));
     }
   }

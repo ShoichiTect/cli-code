@@ -121,9 +121,33 @@ export class Agent {
     // Check for default model in config if model not explicitly provided
     const configManager = new ConfigManager();
     const defaultModel = configManager.getDefaultModel();
+    const savedProvider = configManager.getProvider();
 
     // [学習用デバッグログ] 設定ファイルからの読み込み結果
     console.log(chalk.gray(`  設定ファイルのdefaultModel: ${defaultModel || '(未設定)'}`));
+    console.log(chalk.gray(`  設定ファイルのprovider: ${savedProvider || '(未設定)'}`));
+
+    // [Issue #11 デバッグ] provider と model の不整合チェック
+    if (defaultModel && savedProvider) {
+      // モデル名からプロバイダを推定
+      let expectedProvider: string | null = null;
+      if (defaultModel.startsWith('claude')) {
+        expectedProvider = 'anthropic';
+      } else if (defaultModel.startsWith('gemini')) {
+        expectedProvider = 'gemini';
+      } else {
+        expectedProvider = 'groq'; // その他は groq と仮定
+      }
+
+      if (expectedProvider !== savedProvider) {
+        console.log(chalk.red(`[DEBUG] ⚠️ 不整合検出！`));
+        console.log(chalk.red(`  設定ファイルの provider: "${savedProvider}"`));
+        console.log(chalk.red(`  設定ファイルの model: "${defaultModel}" → 期待される provider: "${expectedProvider}"`));
+        console.log(chalk.red(`  → この状態で API リクエストを送ると 404 エラーになる可能性があります`));
+      } else {
+        console.log(chalk.green(`[DEBUG] ✓ provider と model は整合しています`));
+      }
+    }
 
     const selectedModel = defaultModel || model;
 
@@ -265,10 +289,45 @@ export class Agent {
     this.messages = this.messages.filter(msg => msg.role === 'system');
   }
 
-  public setModel(model: string): void {
+  public setModel(model: string, provider?: 'groq' | 'anthropic' | 'gemini'): void {
+    console.log(chalk.cyan('[DEBUG] agent.setModel() called'));
+    console.log(chalk.gray(`  引数 model: "${model}"`));
+    console.log(chalk.gray(`  引数 provider: "${provider || '(未指定)'}"`));
+    console.log(chalk.gray(`  現在の this.provider: "${this.provider}"`));
+
     this.model = model;
     // Save as default model
     this.configManager.setDefaultModel(model);
+    console.log(chalk.yellow(`[DEBUG] configManager.setDefaultModel("${model}") 実行`));
+
+    // [Issue #11 修正] provider が指定されていれば保存し、クライアントも再初期化
+    if (provider && provider !== this.provider) {
+      console.log(chalk.yellow(`[DEBUG] provider が変更されました: "${this.provider}" → "${provider}"`));
+      this.configManager.setProvider(provider);
+
+      // 新しい provider に対応する API キーを取得してクライアントを再初期化
+      let apiKey: string | null = null;
+      if (provider === 'groq') {
+        apiKey = this.configManager.getApiKey();
+      } else if (provider === 'anthropic') {
+        apiKey = this.configManager.getAnthropicApiKey();
+      } else if (provider === 'gemini') {
+        apiKey = this.configManager.getGeminiApiKey();
+      }
+
+      if (apiKey) {
+        console.log(chalk.green(`[DEBUG] ✓ ${provider} の API クライアントを再初期化`));
+        this.setApiKey(apiKey, provider);
+      } else {
+        console.log(chalk.red(`[DEBUG] ⚠️ ${provider} の API キーが設定されていません`));
+        this.provider = provider; // provider だけは更新
+      }
+    } else if (provider) {
+      console.log(chalk.gray(`[DEBUG] provider は同じなので変更なし`));
+    } else {
+      console.log(chalk.yellow(`[DEBUG] provider は未指定のため更新されません`));
+    }
+
     // Update system message to reflect new model
     const newSystemMessage = this.buildDefaultSystemMessage();
     this.systemMessage = newSystemMessage;
