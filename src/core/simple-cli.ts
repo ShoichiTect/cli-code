@@ -485,31 +485,53 @@ export class SimpleCLI {
    * Main chat loop
    */
   async run(): Promise<void> {
+    // [学習用デバッグログ] 対話ループ開始
+    console.log(chalk.cyan('[DEBUG] SimpleCLI.run() started'));
     console.log(chalk.gray('Type /help for commands, Ctrl+C to exit\n'));
 
+    // [学習用デバッグログ] ループカウンター
+    let loopCount = 0;
+
     while (true) {
+      loopCount++;
+      // [学習用デバッグログ] ループ開始
+      console.log(chalk.cyan(`\n[DEBUG] --- ループ ${loopCount} 回目 ---`));
+      console.log(chalk.gray('[DEBUG] ユーザー入力待ち...'));
+
       // Read user input: Enter sends the line, Ctrl+J inserts a newline in the buffer
       const rawInput = await this.readLineInput();
+
+      // [学習用デバッグログ] 入力を受け取った
+      console.log(chalk.gray(`[DEBUG] rawInput: "${rawInput.substring(0, 50)}${rawInput.length > 50 ? '...' : ''}"`));
 
       // Convert escaped '\n' literals to real newlines for processing
       const input = rawInput.replace(/\\n/g, '\n');
 
-      if (!input.trim()) continue;
+      if (!input.trim()) {
+        console.log(chalk.gray('[DEBUG] 空入力のためスキップ'));
+        continue;
+      }
 
       // Handle slash commands
       if (input.startsWith('/')) {
+        console.log(chalk.yellow(`[DEBUG] スラッシュコマンド検出: ${input}`));
         await this.handleSlashCommand(input);
         continue;
       }
 
       // Regular chat
+      console.log(chalk.cyan('[DEBUG] 通常チャット処理開始'));
+      console.log(chalk.gray(`[DEBUG] agent.chat() を呼び出します...`));
+
       this.isProcessing = true;
       this.spinner = createSpinner('Thinking...');
 
       try {
         await this.agent.chat(input);
+        console.log(chalk.green('[DEBUG] agent.chat() 完了'));
       } catch (error) {
         this.spinner?.stop();
+        console.log(chalk.red(`[DEBUG] エラー発生: ${error}`));
         console.log(chalk.red(`Error: ${error}`));
       } finally {
         this.spinner?.stop();

@@ -39,6 +39,15 @@ interface StartChatOptions {
  * Start the interactive terminal chat using SimpleCLI
  */
 async function startChat(options: StartChatOptions): Promise<void> {
+  // [学習用デバッグログ] 関数呼び出し時のオプションを表示
+  console.log(chalk.cyan('[DEBUG] startChat() called'));
+  console.log(chalk.gray('  options:'), {
+    temperature: options.temperature,
+    system: options.system ? '(custom)' : '(default)',
+    debug: options.debug ?? false,
+    proxy: options.proxy ?? '(none)',
+  });
+
   // Print banner
   console.log(chalk.hex('#FF4500')(BANNER));
 
@@ -60,6 +69,10 @@ async function startChat(options: StartChatOptions): Promise<void> {
   }
 
   try {
+    // [学習用デバッグログ] Agent作成開始
+    console.log(chalk.cyan('[DEBUG] Creating Agent...'));
+    console.log(chalk.gray(`  model: ${defaultModel}`));
+
     // Create agent (API key will be checked on first message)
     const agent = await Agent.create(
       defaultModel,
@@ -69,8 +82,18 @@ async function startChat(options: StartChatOptions): Promise<void> {
       options.proxy
     );
 
+    // [学習用デバッグログ] Agent作成完了
+    console.log(chalk.green('[DEBUG] Agent created successfully'));
+
+    // [学習用デバッグログ] SimpleCLI作成
+    console.log(chalk.cyan('[DEBUG] Creating SimpleCLI instance...'));
+
     // Create and run SimpleCLI
     const cli = new SimpleCLI(agent);
+
+    // [学習用デバッグログ] 対話ループ開始
+    console.log(chalk.cyan('[DEBUG] Starting CLI run loop...'));
+
     await cli.run();
   } catch (error) {
     console.log(chalk.red(`Error initializing agent: ${error}`));

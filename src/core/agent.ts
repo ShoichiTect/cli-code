@@ -2,6 +2,7 @@ import Groq from 'groq-sdk';
 import type { ClientOptions } from 'groq-sdk';
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from '@google/genai';
+import chalk from 'chalk';
 import { convertAllToolSchemasForAnthropic, convertAllToolSchemasForGemini } from '../utils/tool-schema-converter.js';
 import { executeTool, setDebugEnabled, isDebugEnabled, toolDebugLog } from '../tools/tools.js';
 import { validateReadBeforeEdit, getReadBeforeEditError } from '../tools/validators.js';
@@ -113,11 +114,27 @@ export class Agent {
     debug?: boolean,
     proxyOverride?: string
   ): Promise<Agent> {
+    // [学習用デバッグログ] モデル選択ロジックを追跡
+    console.log(chalk.cyan('[DEBUG] Agent.create() called'));
+    console.log(chalk.gray(`  引数で渡されたmodel: ${model}`));
+
     // Check for default model in config if model not explicitly provided
     const configManager = new ConfigManager();
     const defaultModel = configManager.getDefaultModel();
+
+    // [学習用デバッグログ] 設定ファイルからの読み込み結果
+    console.log(chalk.gray(`  設定ファイルのdefaultModel: ${defaultModel || '(未設定)'}`));
+
     const selectedModel = defaultModel || model;
-    
+
+    // [学習用デバッグログ] 最終的に選択されたモデル
+    console.log(chalk.yellow(`  → 最終選択されたmodel: ${selectedModel}`));
+    if (defaultModel) {
+      console.log(chalk.gray('    (設定ファイルの値が優先されました)'));
+    } else {
+      console.log(chalk.gray('    (引数の値がそのまま使用されました)'));
+    }
+
     const agent = new Agent(
       selectedModel,
       temperature,
