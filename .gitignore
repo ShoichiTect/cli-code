@@ -9,3 +9,6 @@ debug-request-*.json
 
 # Personal learning notes
 docs/personal/
+
+# Personal Claude Code commands
+.claude/commands/
