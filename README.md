@@ -120,7 +120,7 @@ cli-code/
 │   │   └── index.ts            # Command exports
 │   ├── core/
 │   │   ├── agent.ts            # AI agent implementation
-│   │   ├── cli-simple.ts       # CLI entry point
+│   │   ├── main.ts             # CLI entry point
 │   │   ├── simple-cli.ts       # Main CLI class (terminal I/O)
 │   │   ├── cli-utils.ts        # CLI utility functions (fzf, spinner, etc.)
 │   │   └── diff-utils.ts       # Diff display utilities
@@ -140,7 +140,7 @@ cli-code/
 └── LICENSE
 ```
 
-**TL;DR:** Start with `src/core/cli-simple.ts` (entry point) and `src/core/simple-cli.ts` (main CLI class). The agent logic is in `src/core/agent.ts`. Tools are in `src/tools/`.
+**TL;DR:** Start with `src/core/main.ts` (entry point) and `src/core/simple-cli.ts` (main CLI class). The agent logic is in `src/core/agent.ts`. Tools are in `src/tools/`.
 
 ## Multi-Provider Support
 

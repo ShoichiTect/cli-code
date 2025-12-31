@@ -3,7 +3,7 @@
 	"version": "1.0.2",
 	"license": "MIT",
 	"bin": {
-		"cli": "dist/core/cli-simple.js"
+		"cli": "dist/core/main.js"
 	},
 	"type": "module",
 	"engines": {
