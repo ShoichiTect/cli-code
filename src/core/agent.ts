@@ -5,7 +5,13 @@ import {GoogleGenAI} from '@google/genai';
 import {
 	executeTool,
 	setDebugEnabled,
+	type ToolResult,
 } from '../tools/tools.js';
+import {
+	isToolName,
+	type ToolArgsByName,
+	type ToolName,
+} from '../tools/tool-types.js';
 import {
 	validateReadBeforeEdit,
 	getReadBeforeEditError,
@@ -43,11 +49,11 @@ export class Agent {
 	private systemMessage: string;
 	private configManager: ConfigManager;
 	private proxyOverride?: string;
-	private onToolStart?: (name: string, args: Record<string, any>) => void;
-	private onToolEnd?: (name: string, result: any) => void;
+	private onToolStart?: (name: ToolName, args: ToolArgsByName[ToolName]) => void;
+	private onToolEnd?: (name: ToolName, result: ToolResult) => void;
 	private onToolApproval?: (
-		toolName: string,
-		toolArgs: Record<string, any>,
+		toolName: ToolName,
+		toolArgs: ToolArgsByName[ToolName],
 	) => Promise<{approved: boolean; autoApproveSession?: boolean}>;
 	private onThinkingText?: (content: string, reasoning?: string) => void;
 	private onFinalMessage?: (content: string, reasoning?: string) => void;
@@ -223,11 +229,11 @@ export class Agent {
 	}
 
 	public setToolCallbacks(callbacks: {
-		onToolStart?: (name: string, args: Record<string, any>) => void;
-		onToolEnd?: (name: string, result: any) => void;
+		onToolStart?: (name: ToolName, args: ToolArgsByName[ToolName]) => void;
+		onToolEnd?: (name: ToolName, result: ToolResult) => void;
 		onToolApproval?: (
-			toolName: string,
-			toolArgs: Record<string, any>,
+			toolName: ToolName,
+			toolArgs: ToolArgsByName[ToolName],
 		) => Promise<{approved: boolean; autoApproveSession?: boolean}>;
 		onThinkingText?: (content: string) => void;
 		onFinalMessage?: (content: string) => void;
@@ -520,7 +526,7 @@ export class Agent {
 		const maxIterations = 50;
 		let iteration = 0;
 
-		while (true) {
+		for (;;) {
 			// Outer loop for iteration reset
 			while (iteration < maxIterations) {
 				// Check for interruption before each iteration
@@ -628,8 +634,16 @@ export class Agent {
 
 					if (error instanceof Error) {
 						// Check if it's an API error with more details
-						if ('status' in error && 'error' in error) {
-							const apiError = error as any;
+						if (
+							typeof error === 'object' &&
+							error !== null &&
+							'status' in error &&
+							'error' in error
+						) {
+							const apiError = error as {
+								status?: number;
+								error?: {error?: {message?: string; code?: string}};
+							};
 							is401Error = apiError.status === 401;
 							if (apiError.error?.error?.message) {
 								errorMessage = `API Error (${apiError.status}): ${apiError.error.error.message}`;
@@ -703,6 +717,7 @@ export class Agent {
 		toolCall: ToolCall,
 		ctx: ChatContext,
 	): Promise<Record<string, unknown> & {userRejected?: boolean}> {
+		void ctx;
 		// Initialize toolName outside try block so it's accessible in catch
 		let toolName = 'unknown';
 		try {
@@ -713,9 +728,18 @@ export class Agent {
 			}
 
 			// Handle truncated tool calls
-			let toolArgs: any;
+			let toolArgs: ToolArgsByName[ToolName];
 			try {
-				toolArgs = JSON.parse(toolCall.function.arguments);
+				const parsedArgs = JSON.parse(
+					toolCall.function.arguments,
+				) as unknown;
+				if (!isToolName(toolName)) {
+					return {
+						error: `Unknown tool: ${toolName}`,
+						success: false,
+					};
+				}
+				toolArgs = parsedArgs as ToolArgsByName[typeof toolName];
 			} catch (error) {
 				const errorMsg = `Tool arguments truncated: ${error}. Please break this into smaller pieces or use shorter content.`;
 				if (debugEnabled) {
@@ -746,9 +770,10 @@ export class Agent {
 			}
 
 			// Check read-before-edit for edit tools
-			if (toolName === 'edit_file' && toolArgs.file_path) {
-				if (!validateReadBeforeEdit(toolArgs.file_path)) {
-					const errorMessage = getReadBeforeEditError(toolArgs.file_path);
+			if (toolName === 'edit_file') {
+				const editArgs = toolArgs as ToolArgsByName['edit_file'];
+				if (editArgs.file_path && !validateReadBeforeEdit(editArgs.file_path)) {
+					const errorMessage = getReadBeforeEditError(editArgs.file_path);
 					const result = {error: errorMessage, success: false};
 					if (this.onToolEnd) {
 						this.onToolEnd(toolName, result);
@@ -871,7 +896,7 @@ const DEBUG_LOG_FILE = path.join(process.cwd(), 'debug-agent.log');
 let debugLogCleared = false;
 let debugEnabled = false;
 
-function debugLog(message: string, data?: any) {
+function debugLog(message: string, data?: unknown) {
 	if (!debugEnabled) return;
 
 	// Clear log file on first debug log of each session
@@ -889,7 +914,7 @@ function debugLog(message: string, data?: any) {
 
 function generateCurlCommand(
 	apiKey: string,
-	requestBody: any,
+	requestBody: unknown,
 	requestCount: number,
 	provider: 'groq' | 'anthropic' | 'gemini' = 'groq',
 ): string {

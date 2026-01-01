@@ -6,6 +6,8 @@
 import type Groq from 'groq-sdk';
 import type Anthropic from '@anthropic-ai/sdk';
 import type {GoogleGenAI} from '@google/genai';
+import type {ToolResult} from '../../tools/tools.js';
+import type {ToolArgsByName, ToolName} from '../../tools/tool-types.js';
 
 /** ツール呼び出し情報 */
 export interface ToolCall {
@@ -48,11 +50,11 @@ export interface ChatContext {
 	systemMessage: string;
 
 	// コールバック
-	onToolStart?: (name: string, args: Record<string, unknown>) => void;
-	onToolEnd?: (name: string, result: unknown) => void;
+	onToolStart?: (name: ToolName, args: ToolArgsByName[ToolName]) => void;
+	onToolEnd?: (name: ToolName, result: ToolResult) => void;
 	onToolApproval?: (
-		toolName: string,
-		toolArgs: Record<string, unknown>,
+		toolName: ToolName,
+		toolArgs: ToolArgsByName[ToolName],
 	) => Promise<{approved: boolean; autoApproveSession?: boolean}>;
 	onThinkingText?: (content: string, reasoning?: string) => void;
 	onFinalMessage?: (content: string, reasoning?: string) => void;

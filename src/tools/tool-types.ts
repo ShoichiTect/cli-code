@@ -1,11 +1,14 @@
-export type ToolName =
-	| 'read_file'
-	| 'create_file'
-	| 'edit_file'
-	| 'delete_file'
-	| 'list_files'
-	| 'search_files'
-	| 'execute_command';
+export const TOOL_NAMES = [
+	'read_file',
+	'create_file',
+	'edit_file',
+	'delete_file',
+	'list_files',
+	'search_files',
+	'execute_command',
+] as const;
+
+export type ToolName = (typeof TOOL_NAMES)[number];
 
 export type ReadFileArgs = {
 	file_path: string;
@@ -78,3 +81,7 @@ export type ToolArgsByName = {
 	search_files: SearchFilesArgs;
 	execute_command: ExecuteCommandArgs;
 };
+
+export function isToolName(name: string): name is ToolName {
+	return (TOOL_NAMES as readonly string[]).includes(name);
+}
