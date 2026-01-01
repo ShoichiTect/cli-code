@@ -8,6 +8,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { Agent } from './agent.js';
 import { SimpleCLI } from './simple-cli.js';
+import { learn } from '../utils/learn-log.js';
 
 const BANNER = `
   ██████  ██       ██
@@ -39,9 +40,9 @@ interface StartChatOptions {
  * Start the interactive terminal chat using SimpleCLI
  */
 async function startChat(options: StartChatOptions): Promise<void> {
-  // [学習用デバッグログ] 関数呼び出し時のオプションを表示
-  console.log(chalk.cyan('[DEBUG] startChat() called'));
-  console.log(chalk.gray('  options:'), {
+  // [学習用ログ] 関数呼び出し時のオプションを表示
+  learn.log('startChat() called');
+  learn.value('options', {
     temperature: options.temperature,
     system: options.system ? '(custom)' : '(default)',
     debug: options.debug ?? false,
@@ -69,9 +70,9 @@ async function startChat(options: StartChatOptions): Promise<void> {
   }
 
   try {
-    // [学習用デバッグログ] Agent作成開始
-    console.log(chalk.cyan('[DEBUG] Creating Agent...'));
-    console.log(chalk.gray(`  model: ${defaultModel}`));
+    // [学習用ログ] Agent作成開始
+    learn.log('Creating Agent...');
+    learn.value('model', defaultModel);
 
     // Create agent (API key will be checked on first message)
     const agent = await Agent.create(
@@ -82,17 +83,17 @@ async function startChat(options: StartChatOptions): Promise<void> {
       options.proxy
     );
 
-    // [学習用デバッグログ] Agent作成完了
-    console.log(chalk.green('[DEBUG] Agent created successfully'));
+    // [学習用ログ] Agent作成完了
+    learn.success('Agent created successfully');
 
-    // [学習用デバッグログ] SimpleCLI作成
-    console.log(chalk.cyan('[DEBUG] Creating SimpleCLI instance...'));
+    // [学習用ログ] SimpleCLI作成
+    learn.log('Creating SimpleCLI instance...');
 
     // Create and run SimpleCLI
     const cli = new SimpleCLI(agent);
 
-    // [学習用デバッグログ] 対話ループ開始
-    console.log(chalk.cyan('[DEBUG] Starting CLI run loop...'));
+    // [学習用ログ] 対話ループ開始
+    learn.log('Starting CLI run loop...');
 
     await cli.run();
   } catch (error) {

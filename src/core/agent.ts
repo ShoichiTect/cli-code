@@ -9,6 +9,7 @@ import { validateReadBeforeEdit, getReadBeforeEditError } from '../tools/validat
 import { ALL_TOOL_SCHEMAS, DANGEROUS_TOOLS, APPROVAL_REQUIRED_TOOLS } from '../tools/tool-schemas.js';
 import { ConfigManager } from '../utils/local-settings.js';
 import { getProxyAgent, getProxyInfo } from '../utils/proxy-config.js';
+import { learn } from '../utils/learn-log.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -114,18 +115,18 @@ export class Agent {
     debug?: boolean,
     proxyOverride?: string
   ): Promise<Agent> {
-    // [学習用デバッグログ] モデル選択ロジックを追跡
-    console.log(chalk.cyan('[DEBUG] Agent.create() called'));
-    console.log(chalk.gray(`  引数で渡されたmodel: ${model}`));
+    // [学習用ログ] モデル選択ロジックを追跡
+    learn.log('Agent.create() called');
+    learn.value('引数で渡されたmodel', model);
 
     // Check for default model in config if model not explicitly provided
     const configManager = new ConfigManager();
     const defaultModel = configManager.getDefaultModel();
     const savedProvider = configManager.getProvider();
 
-    // [学習用デバッグログ] 設定ファイルからの読み込み結果
-    console.log(chalk.gray(`  設定ファイルのdefaultModel: ${defaultModel || '(未設定)'}`));
-    console.log(chalk.gray(`  設定ファイルのprovider: ${savedProvider || '(未設定)'}`));
+    // [学習用ログ] 設定ファイルからの読み込み結果
+    learn.value('設定ファイルのdefaultModel', defaultModel || '(未設定)');
+    learn.value('設定ファイルのprovider', savedProvider || '(未設定)');
 
     // [Issue #11 デバッグ] provider と model の不整合チェック
     if (defaultModel && savedProvider) {
@@ -140,23 +141,23 @@ export class Agent {
       }
 
       if (expectedProvider !== savedProvider) {
-        console.log(chalk.red(`[DEBUG] ⚠️ 不整合検出！`));
-        console.log(chalk.red(`  設定ファイルの provider: "${savedProvider}"`));
-        console.log(chalk.red(`  設定ファイルの model: "${defaultModel}" → 期待される provider: "${expectedProvider}"`));
-        console.log(chalk.red(`  → この状態で API リクエストを送ると 404 エラーになる可能性があります`));
+        learn.error('不整合検出！');
+        learn.value('設定ファイルの provider', savedProvider);
+        learn.value('設定ファイルの model', `${defaultModel} → 期待される provider: ${expectedProvider}`);
+        learn.error('この状態で API リクエストを送ると 404 エラーになる可能性があります');
       } else {
-        console.log(chalk.green(`[DEBUG] ✓ provider と model は整合しています`));
+        learn.success('provider と model は整合しています');
       }
     }
 
     const selectedModel = defaultModel || model;
 
-    // [学習用デバッグログ] 最終的に選択されたモデル
-    console.log(chalk.yellow(`  → 最終選択されたmodel: ${selectedModel}`));
+    // [学習用ログ] 最終的に選択されたモデル
+    learn.warn(`最終選択されたmodel: ${selectedModel}`);
     if (defaultModel) {
-      console.log(chalk.gray('    (設定ファイルの値が優先されました)'));
+      learn.value('選択理由', '設定ファイルの値が優先されました');
     } else {
-      console.log(chalk.gray('    (引数の値がそのまま使用されました)'));
+      learn.value('選択理由', '引数の値がそのまま使用されました');
     }
 
     const agent = new Agent(
@@ -290,31 +291,32 @@ export class Agent {
   }
 
   public setModel(model: string, provider?: 'groq' | 'anthropic' | 'gemini'): void {
-    console.log(chalk.cyan('[DEBUG] agent.setModel() called'));
-    console.log(chalk.gray(`  引数 model: "${model}"`));
-    console.log(chalk.gray(`  引数 provider: "${provider || '(未指定)'}"`));
-    console.log(chalk.gray(`  現在の this.provider: "${this.provider}"`));
+    // [学習用ログ] setModel() の呼び出しを追跡
+    learn.log('agent.setModel() called');
+    learn.value('引数 model', model);
+    learn.value('引数 provider', provider || '(未指定)');
+    learn.value('現在の this.provider', this.provider);
 
     this.model = model;
     // Save as default model
     this.configManager.setDefaultModel(model);
-    console.log(chalk.yellow(`[DEBUG] configManager.setDefaultModel("${model}") 実行`));
+    learn.warn(`configManager.setDefaultModel("${model}") 実行`);
 
     // [Issue #11 修正] provider が指定されていれば保存し、クライアントも再初期化
     // 注意: this.provider（メモリ上の値）ではなく、設定ファイルの値と比較する
     const savedProvider = this.configManager.getProvider();
-    console.log(chalk.gray(`  設定ファイルの provider: "${savedProvider || '(未設定)'}"`));
+    learn.value('設定ファイルの provider', savedProvider || '(未設定)');
 
     if (provider) {
       // 設定ファイルの provider と異なる場合は保存
       if (provider !== savedProvider) {
-        console.log(chalk.yellow(`[DEBUG] provider が変更されました（設定ファイル）: "${savedProvider}" → "${provider}"`));
+        learn.warn(`provider が変更されました（設定ファイル）: "${savedProvider}" → "${provider}"`);
         this.configManager.setProvider(provider);
       }
 
       // メモリ上の provider と異なる場合はクライアント再初期化
       if (provider !== this.provider) {
-        console.log(chalk.yellow(`[DEBUG] provider が変更されました（メモリ）: "${this.provider}" → "${provider}"`));
+        learn.warn(`provider が変更されました（メモリ）: "${this.provider}" → "${provider}"`);
 
         // 新しい provider に対応する API キーを取得してクライアントを再初期化
         let apiKey: string | null = null;
@@ -327,17 +329,17 @@ export class Agent {
         }
 
         if (apiKey) {
-          console.log(chalk.green(`[DEBUG] ✓ ${provider} の API クライアントを再初期化`));
+          learn.success(`${provider} の API クライアントを再初期化`);
           this.setApiKey(apiKey, provider);
         } else {
-          console.log(chalk.red(`[DEBUG] ⚠️ ${provider} の API キーが設定されていません`));
+          learn.error(`${provider} の API キーが設定されていません`);
           this.provider = provider; // provider だけは更新
         }
       } else {
-        console.log(chalk.gray(`[DEBUG] メモリ上の provider は同じなので再初期化不要`));
+        learn.value('再初期化', 'メモリ上の provider は同じなので不要');
       }
     } else {
-      console.log(chalk.yellow(`[DEBUG] provider は未指定のため更新されません`));
+      learn.warn('provider は未指定のため更新されません');
     }
 
     // Update system message to reflect new model

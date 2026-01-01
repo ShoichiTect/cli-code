@@ -21,6 +21,7 @@ import {
 } from './diff-utils.js';
 import { parseMarkdown, parseInlineElements } from '../utils/markdown.js';
 import { DANGEROUS_TOOLS } from '../tools/tool-schemas.js';
+import { learn } from '../utils/learn-log.js';
 
 // Model definitions for each provider
 const MODELS = {
@@ -485,53 +486,53 @@ export class SimpleCLI {
    * Main chat loop
    */
   async run(): Promise<void> {
-    // [学習用デバッグログ] 対話ループ開始
-    console.log(chalk.cyan('[DEBUG] SimpleCLI.run() started'));
+    // [学習用ログ] 対話ループ開始
+    learn.log('SimpleCLI.run() started');
     console.log(chalk.gray('Type /help for commands, Ctrl+C to exit\n'));
 
-    // [学習用デバッグログ] ループカウンター
+    // [学習用ログ] ループカウンター
     let loopCount = 0;
 
     while (true) {
       loopCount++;
-      // [学習用デバッグログ] ループ開始
-      console.log(chalk.cyan(`\n[DEBUG] --- ループ ${loopCount} 回目 ---`));
-      console.log(chalk.gray('[DEBUG] ユーザー入力待ち...'));
+      // [学習用ログ] ループ開始
+      learn.divider(`ループ ${loopCount} 回目`);
+      learn.log('ユーザー入力待ち...');
 
       // Read user input: Enter sends the line, Ctrl+J inserts a newline in the buffer
       const rawInput = await this.readLineInput();
 
-      // [学習用デバッグログ] 入力を受け取った
-      console.log(chalk.gray(`[DEBUG] rawInput: "${rawInput.substring(0, 50)}${rawInput.length > 50 ? '...' : ''}"`));
+      // [学習用ログ] 入力を受け取った
+      learn.value('rawInput', rawInput.substring(0, 50) + (rawInput.length > 50 ? '...' : ''));
 
       // Convert escaped '\n' literals to real newlines for processing
       const input = rawInput.replace(/\\n/g, '\n');
 
       if (!input.trim()) {
-        console.log(chalk.gray('[DEBUG] 空入力のためスキップ'));
+        learn.log('空入力のためスキップ');
         continue;
       }
 
       // Handle slash commands
       if (input.startsWith('/')) {
-        console.log(chalk.yellow(`[DEBUG] スラッシュコマンド検出: ${input}`));
+        learn.warn(`スラッシュコマンド検出: ${input}`);
         await this.handleSlashCommand(input);
         continue;
       }
 
       // Regular chat
-      console.log(chalk.cyan('[DEBUG] 通常チャット処理開始'));
-      console.log(chalk.gray(`[DEBUG] agent.chat() を呼び出します...`));
+      learn.log('通常チャット処理開始');
+      learn.value('呼び出し', 'agent.chat()');
 
       this.isProcessing = true;
       this.spinner = createSpinner('Thinking...');
 
       try {
         await this.agent.chat(input);
-        console.log(chalk.green('[DEBUG] agent.chat() 完了'));
+        learn.success('agent.chat() 完了');
       } catch (error) {
         this.spinner?.stop();
-        console.log(chalk.red(`[DEBUG] エラー発生: ${error}`));
+        learn.error(`エラー発生: ${error}`);
         console.log(chalk.red(`Error: ${error}`));
       } finally {
         this.spinner?.stop();
@@ -643,7 +644,8 @@ export class SimpleCLI {
    * Select model using number selection
    */
   private async selectModel(): Promise<void> {
-    console.log(chalk.cyan('[DEBUG] selectModel() called'));
+    // [学習用ログ] モデル選択
+    learn.log('selectModel() called');
 
     // Build model list with provider prefixes
     const modelList: string[] = [];
@@ -654,11 +656,11 @@ export class SimpleCLI {
     }
 
     const selected = await selectWithNumbers(modelList, 'Select model');
-    console.log(chalk.gray(`[DEBUG] selected: "${selected}"`));
+    learn.value('selected', selected || '(キャンセル)');
 
     if (selected) {
       const [provider, model] = selected.split(':');
-      console.log(chalk.yellow(`[DEBUG] 分解結果: provider="${provider}", model="${model}"`));
+      learn.warn(`分解結果: provider="${provider}", model="${model}"`);
       // [Issue #11 修正] provider も一緒に渡す
       this.agent.setModel(model, provider as 'groq' | 'anthropic' | 'gemini');
       console.log(chalk.green(` Switched to ${model} (${provider})`));
