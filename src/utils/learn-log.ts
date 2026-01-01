@@ -18,41 +18,41 @@ const isEnabled = (): boolean => process.env.LEARN === '1';
 const PREFIX = '[LEARN]';
 
 export const learn = {
-  /** 基本ログ - 関数呼び出しや処理開始に使用 */
-  log: (msg: string): void => {
-    if (!isEnabled()) return;
-    console.log(chalk.cyan(`${PREFIX} ${msg}`));
-  },
+	/** 基本ログ - 関数呼び出しや処理開始に使用 */
+	log: (msg: string): void => {
+		if (!isEnabled()) return;
+		console.log(chalk.cyan(`${PREFIX} ${msg}`));
+	},
 
-  /** 値ログ - 変数の値を表示 */
-  value: (name: string, val: unknown): void => {
-    if (!isEnabled()) return;
-    const formatted =
-      typeof val === 'object' ? JSON.stringify(val) : String(val);
-    console.log(chalk.gray(`  ${name}: ${formatted}`));
-  },
+	/** 値ログ - 変数の値を表示 */
+	value: (name: string, val: unknown): void => {
+		if (!isEnabled()) return;
+		const formatted =
+			typeof val === 'object' ? JSON.stringify(val) : String(val);
+		console.log(chalk.gray(`  ${name}: ${formatted}`));
+	},
 
-  /** 成功ログ */
-  success: (msg: string): void => {
-    if (!isEnabled()) return;
-    console.log(chalk.green(`${PREFIX} ✓ ${msg}`));
-  },
+	/** 成功ログ */
+	success: (msg: string): void => {
+		if (!isEnabled()) return;
+		console.log(chalk.green(`${PREFIX} ✓ ${msg}`));
+	},
 
-  /** 警告ログ */
-  warn: (msg: string): void => {
-    if (!isEnabled()) return;
-    console.log(chalk.yellow(`${PREFIX} ${msg}`));
-  },
+	/** 警告ログ */
+	warn: (msg: string): void => {
+		if (!isEnabled()) return;
+		console.log(chalk.yellow(`${PREFIX} ${msg}`));
+	},
 
-  /** エラーログ */
-  error: (msg: string): void => {
-    if (!isEnabled()) return;
-    console.log(chalk.red(`${PREFIX} ⚠️ ${msg}`));
-  },
+	/** エラーログ */
+	error: (msg: string): void => {
+		if (!isEnabled()) return;
+		console.log(chalk.red(`${PREFIX} ⚠️ ${msg}`));
+	},
 
-  /** 区切り線 - ループの区切りなどに使用 */
-  divider: (label: string): void => {
-    if (!isEnabled()) return;
-    console.log(chalk.cyan(`\n${PREFIX} --- ${label} ---`));
-  },
+	/** 区切り線 - ループの区切りなどに使用 */
+	divider: (label: string): void => {
+		if (!isEnabled()) return;
+		console.log(chalk.cyan(`\n${PREFIX} --- ${label} ---`));
+	},
 };

@@ -10,10 +10,10 @@ CLI Code is a streamlined version of groq-code-cli that replaces the React Ink T
 - **More portable** - Works in any terminal environment
 - **Easier to customize** - Simpler codebase to understand and modify
 
-
 ## Installation
 
 ### For Development
+
 ```bash
 git clone <your-repo-url>
 cd cli-code
@@ -28,6 +28,7 @@ npm run dev
 ```
 
 ## Usage
+
 ```bash
 # Start chat session
 cli
@@ -63,6 +64,7 @@ You can choose between **Groq**, **Anthropic**, **Gemini**, or **OpenAI** as you
 This creates a `.groq/` folder in your home directory that stores your API keys, default model selection, and any other config you wish to add.
 
 You can also set your API keys via environment variables:
+
 ```bash
 export GROQ_API_KEY=your_groq_api_key_here
 export ANTHROPIC_API_KEY=your_anthropic_api_key_here
@@ -88,22 +90,24 @@ export HTTPS_PROXY=socks5://proxy:1080
 Priority: `--proxy` > `HTTPS_PROXY` > `HTTP_PROXY`
 
 ### Available Commands
+
 - `/help` - Show help and available commands
 - `/login` - Set API key for a provider
 - `/model` - Switch AI provider and select model
 - `/clear` - Clear chat history and context
 - `/stats` - Display session statistics and token usage
 
-
 ## Development
 
 ### Testing Locally
+
 ```bash
 # Run this in the background during development to automatically apply any changes to the source code
 npm run dev
 ```
 
 ### Available Scripts
+
 ```bash
 npm run build      # Build TypeScript to dist/
 npm run dev        # Build in watch mode
@@ -149,6 +153,7 @@ The CLI supports multiple AI providers. Use `/model` to switch between them:
 ### Supported Providers & Models
 
 **Groq:**
+
 - moonshotai/kimi-k2-instruct
 - meta-llama/llama-4-maverick-17b-128e-instruct
 - qwen/qwen3-32b
@@ -157,11 +162,13 @@ The CLI supports multiple AI providers. Use `/model` to switch between them:
 - llama-3.1-8b-instant
 
 **Anthropic:**
+
 - claude-opus-4-5-20251101
 - claude-sonnet-4-5-20250514
 - claude-3-5-haiku-20241022
 
 **Gemini:**
+
 - gemini-2.5-pro
 - gemini-2.5-flash
 - gemini-2.0-flash
@@ -174,28 +181,30 @@ The CLI supports multiple AI providers. Use `/model` to switch between them:
 Tools are AI-callable functions that extend the CLI's capabilities. To add a new tool:
 
 1. **Define the tool schema** in `src/tools/tool-schemas.ts`:
+
 ```typescript
 export const YOUR_TOOL_SCHEMA: ToolSchema = {
-  type: 'function',
-  function: {
-    name: 'your_tool_name',
-    description: 'What your tool does',
-    parameters: {
-      type: 'object',
-      properties: {
-        param1: { type: 'string', description: 'Parameter description' }
-      },
-      required: ['param1']
-    }
-  }
+	type: 'function',
+	function: {
+		name: 'your_tool_name',
+		description: 'What your tool does',
+		parameters: {
+			type: 'object',
+			properties: {
+				param1: {type: 'string', description: 'Parameter description'},
+			},
+			required: ['param1'],
+		},
+	},
 };
 ```
 
 2. **Implement the tool function** in `src/tools/tools.ts`:
+
 ```typescript
 export async function yourToolName(param1: string): Promise<ToolResult> {
-  // Your implementation here
-  return createToolResponse(true, result, 'Success message');
+	// Your implementation here
+	return createToolResponse(true, result, 'Success message');
 }
 ```
 
@@ -204,6 +213,7 @@ export async function yourToolName(param1: string): Promise<ToolResult> {
 4. **Add the schema** to `ALL_TOOL_SCHEMAS` array in `src/tools/tool-schemas.ts`.
 
 #### Changing Start Command
+
 To change the start command from `cli`, change `"cli"` in `"bin"` of `package.json` to your global command of choice.
 
 Re-run `npm run build` and `npm link`.
@@ -222,4 +232,5 @@ This project is forked from [groq-code-cli](https://github.com/build-with-groq/g
 MIT
 
 ## 次やること
+
 https://docs.google.com/document/d/1M7NvfxN2vDAVJ8xyvD1dADusSqjN2RBa/edit?usp=sharing&ouid=112696806737041576974&rtpof=true&sd=true
