@@ -9,7 +9,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 import {Agent} from './agent.js';
 import {
-	confirmPrompt,
+	isConfirmed,
 	createSpinner,
 	Spinner,
 	selectWithNumbers,
@@ -152,13 +152,13 @@ export class SimpleCLI {
 
 			onMaxIterations: async (maxIterations: number) => {
 				this.spinner?.stop();
-				return confirmPrompt(`Reached ${maxIterations} iterations. Continue?`);
+				return isConfirmed(`Reached ${maxIterations} iterations. Continue?`);
 			},
 
 			onError: async (error: string) => {
 				this.spinner?.stop();
 				console.log(chalk.red(`\nError: ${error}`));
-				return confirmPrompt('Retry?');
+				return isConfirmed('Retry?');
 			},
 		});
 	}

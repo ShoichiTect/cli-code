@@ -5,7 +5,6 @@
  * - ASCII spinner with elapsed time
  */
 
-import {execSync, spawnSync} from 'child_process';
 import * as readline from 'readline';
 
 /**
@@ -109,9 +108,11 @@ export async function selectWithNumbers(
 }
 
 /**
- * Simple Y/n confirmation prompt using fzf selection
+ * Simple Y/n confirmation prompt using number selection
+ * @param message - Confirmation message to display
+ * @returns Promise<boolean> - true if user selected 'yes', false otherwise
  */
-export async function confirmPrompt(message: string): Promise<boolean> {
+export async function isConfirmed(message: string): Promise<boolean> {
 	const selection = await selectWithNumbers(['yes', 'no'], message);
 	if (!selection) return false;
 	return selection.toLowerCase() === 'yes';
@@ -196,24 +197,3 @@ export function formatElapsedTime(ms: number): string {
 	return `${minutes}m ${remainingSeconds}s`;
 }
 
-/**
- * Create a readline interface for user input
- */
-export function createReadlineInterface(): readline.Interface {
-	return readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
-}
-
-/**
- * Ask a question and get user input
- */
-export async function question(
-	rl: readline.Interface,
-	prompt: string,
-): Promise<string> {
-	return new Promise(resolve => {
-		rl.question(prompt, resolve);
-	});
-}
