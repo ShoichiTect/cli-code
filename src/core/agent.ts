@@ -2,12 +2,9 @@ import Groq from 'groq-sdk';
 import type {ClientOptions} from 'groq-sdk';
 import Anthropic from '@anthropic-ai/sdk';
 import {GoogleGenAI} from '@google/genai';
-import chalk from 'chalk';
 import {
 	executeTool,
 	setDebugEnabled,
-	isDebugEnabled,
-	toolDebugLog,
 } from '../tools/tools.js';
 import {
 	validateReadBeforeEdit,
