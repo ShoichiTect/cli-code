@@ -3,10 +3,9 @@ import type { ClientOptions } from 'groq-sdk';
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from '@google/genai';
 import chalk from 'chalk';
-import { convertAllToolSchemasForAnthropic, convertAllToolSchemasForGemini } from '../utils/tool-schema-converter.js';
 import { executeTool, setDebugEnabled, isDebugEnabled, toolDebugLog } from '../tools/tools.js';
 import { validateReadBeforeEdit, getReadBeforeEditError } from '../tools/validators.js';
-import { ALL_TOOL_SCHEMAS, DANGEROUS_TOOLS, APPROVAL_REQUIRED_TOOLS } from '../tools/tool-schemas.js';
+import { DANGEROUS_TOOLS, APPROVAL_REQUIRED_TOOLS } from '../tools/tool-schemas.js';
 import { ConfigManager } from '../utils/local-settings.js';
 import { getProxyAgent, getProxyInfo } from '../utils/proxy-config.js';
 import { learn } from '../utils/learn-log.js';
@@ -14,23 +13,15 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { DEFAULT_SYSTEM_PROMPT } from './default-prompt.js';
-
-interface ToolCall {
-  id: string;
-  type: string;
-  function: {
-    name: string;
-    arguments: string;
-  };
-  thoughtSignature?: string;  // Gemini Thinking Modelのthought signatureを保持
-}
-
-interface Message {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
-}
+import {
+  chatWithGroq,
+  chatWithAnthropic,
+  chatWithGemini,
+  type ChatContext,
+  type ChatResult,
+  type ToolCall,
+  type Message,
+} from './providers/index.js';
 
 export class Agent {
   private client: Groq | Anthropic | null = null;
@@ -470,550 +461,71 @@ export class Agent {
             throw new Error('AI client not initialized');
           }
 
+          // ChatContext を構築
+          const ctx: ChatContext = {
+            client: this.client,
+            geminiClient: this.geminiClient,
+            apiKey: this.apiKey,
+            model: this.model,
+            temperature: this.temperature,
+            messages: [...this.messages],
+            systemMessage: this.systemMessage,
+            onToolStart: this.onToolStart,
+            onToolEnd: this.onToolEnd,
+            onToolApproval: this.onToolApproval,
+            onThinkingText: this.onThinkingText,
+            onFinalMessage: this.onFinalMessage,
+            onApiUsage: this.onApiUsage,
+            sessionAutoApprove: this.sessionAutoApprove,
+            isInterrupted: this.isInterrupted,
+            currentAbortController: this.currentAbortController,
+            requestCount: this.requestCount,
+          };
+
+          let result: ChatResult;
+
+          // プロバイダー別に委譲
           if (this.provider === 'groq') {
-            // ===== Groq API呼び出し =====
-            debugLog('Making API call to Groq with model:', this.model);
-            debugLog('Messages count:', this.messages.length);
-            debugLog('Last few messages:', this.messages.slice(-3));
-
-            // Prepare request body for curl logging
-            const requestBody = {
-              model: this.model,
-              messages: this.messages,
-              tools: ALL_TOOL_SCHEMAS,
-              tool_choice: 'auto' as const,
-              temperature: this.temperature,
-              max_tokens: 8000,
-              stream: false as const
-            };
-
-            // Log equivalent curl command
-            this.requestCount++;
-            const curlCommand = generateCurlCommand(this.apiKey!, requestBody, this.requestCount);
-            if (curlCommand) {
-              debugLog('Equivalent curl command:', curlCommand);
-            }
-
-            // Create AbortController for this request
-            this.currentAbortController = new AbortController();
-
-            const response = await (this.client as Groq).chat.completions.create({
-              model: this.model,
-              messages: this.messages as any,
-              tools: ALL_TOOL_SCHEMAS,
-              tool_choice: 'auto',
-              temperature: this.temperature,
-              max_tokens: 8000,
-              stream: false
-            }, {
-              signal: this.currentAbortController.signal
-            });
-
-            debugLog('Full API response received:', response);
-            debugLog('Response usage:', response.usage);
-            debugLog('Response finish_reason:', response.choices[0].finish_reason);
-            debugLog('Response choices length:', response.choices.length);
-
-            const message = response.choices[0].message;
-
-            // Extract reasoning if present
-            const reasoning = (message as any).reasoning;
-
-            // Pass usage data to callback if available
-            if (response.usage && this.onApiUsage) {
-              this.onApiUsage({
-                prompt_tokens: response.usage.prompt_tokens,
-                completion_tokens: response.usage.completion_tokens,
-                total_tokens: response.usage.total_tokens,
-                total_time: response.usage.total_time
-              });
-            }
-            debugLog('Message content length:', message.content?.length || 0);
-            debugLog('Message has tool_calls:', !!message.tool_calls);
-            debugLog('Message tool_calls count:', message.tool_calls?.length || 0);
-
-            if (response.choices[0].finish_reason !== 'stop' && response.choices[0].finish_reason !== 'tool_calls') {
-              debugLog('WARNING - Unexpected finish_reason:', response.choices[0].finish_reason);
-            }
-
-            // Handle tool calls if present
-            if (message.tool_calls) {
-              // Show thinking text or reasoning if present
-              if (message.content || reasoning) {
-                if (this.onThinkingText) {
-                  this.onThinkingText(message.content || '', reasoning);
-                }
-              }
-
-              // Add assistant message to history
-              const assistantMsg: Message = {
-                role: 'assistant',
-                content: message.content || ''
-              };
-              assistantMsg.tool_calls = message.tool_calls;
-              this.messages.push(assistantMsg);
-
-              // Execute tool calls
-              for (const toolCall of message.tool_calls) {
-                // Check for interruption before each tool execution
-                if (this.isInterrupted) {
-                  debugLog('Tool execution interrupted by user');
-                  this.currentAbortController = null;
-                  return;
-                }
-
-                const result = await this.executeToolCall(toolCall);
-
-                // Add tool result to conversation (including rejected ones)
-                this.messages.push({
-                  role: 'tool',
-                  tool_call_id: toolCall.id,
-                  content: JSON.stringify(result)
-                });
-
-                // Check if user rejected the tool, if so, stop processing
-                if (result.userRejected) {
-                  // Add a note to the conversation that the user rejected the tool
-                  this.messages.push({
-                    role: 'system',
-                    content: `The user rejected the ${toolCall.function.name} tool execution. The response has been terminated. Please wait for the user's next instruction.`
-                  });
-                  return;
-                }
-              }
-
-              // Continue loop to get model response to tool results
-              iteration++;
-              continue;
-            }
-
-            // No tool calls, this is the final response
-            const content = message.content || '';
-            debugLog('Final response - no tool calls detected');
-            debugLog('Final content length:', content.length);
-            debugLog('Final content preview:', content.substring(0, 200));
-
-            if (this.onFinalMessage) {
-              debugLog('Calling onFinalMessage callback');
-              this.onFinalMessage(content, reasoning);
-            } else {
-              debugLog('No onFinalMessage callback set');
-            }
-
-            // Add final response to conversation history
-            this.messages.push({
-              role: 'assistant',
-              content: content
-            });
-
-            debugLog('Final response added to conversation history, exiting chat loop');
-            this.currentAbortController = null; // Clear abort controller
-            return; // Successfully completed, exit both loops
-
+            result = await chatWithGroq(
+              ctx,
+              this.executeToolCall.bind(this),
+              debugLog,
+              generateCurlCommand
+            );
           } else if (this.provider === 'anthropic') {
-            // ===== Anthropic API呼び出し =====
-            debugLog('Making API call to Anthropic with model:', this.model);
-            debugLog('Messages count:', this.messages.length);
+            result = await chatWithAnthropic(
+              ctx,
+              this.executeToolCall.bind(this),
+              debugLog,
+              generateCurlCommand
+            );
+          } else {
+            result = await chatWithGemini(
+              ctx,
+              this.executeToolCall.bind(this),
+              debugLog
+            );
+          }
 
-            // Anthropic用にメッセージを変換（systemロールを分離）
-            const systemContent = this.messages
-              .filter(msg => msg.role === 'system')
-              .map(msg => msg.content)
-              .join('\n\n');
+          // 状態を同期
+          this.messages = result.messages;
+          this.requestCount = ctx.requestCount;
+          this.currentAbortController = ctx.currentAbortController;
 
-            // システムプロンプトとツール定義をキャッシュ対象として配列形式で構築
-            const anthropicTools = convertAllToolSchemasForAnthropic(ALL_TOOL_SCHEMAS);
-            const systemMessages = [
-              {
-                type: 'text' as const,
-                text: systemContent,
-                cache_control: { type: 'ephemeral' as const }
-              },
-              {
-                type: 'text' as const,
-                text: '\n\n## Available Tools\n\n' + JSON.stringify(anthropicTools, null, 2),
-                cache_control: { type: 'ephemeral' as const }
-              }
-            ];
-
-            // 会話履歴をAnthropic形式に変換（最新メッセージ以外をキャッシュ対象にする）
-            const filteredMessages = this.messages.filter(msg => msg.role !== 'system');
-            const conversationMessages = filteredMessages.map((msg, index) => {
-                // 最新メッセージの1つ前（＝最後のやり取り）にcache_controlを付与
-                // これにより、過去の会話履歴全体がキャッシュ対象になる
-                const isLastCacheable = index === filteredMessages.length - 2;
-
-                if (msg.role === 'tool') {
-                  // Anthropicではtoolロールは"user"として扱い、tool_result形式にする
-                  const toolResult: any = {
-                    type: 'tool_result' as const,
-                    tool_use_id: msg.tool_call_id!,
-                    content: msg.content
-                  };
-                  if (isLastCacheable) {
-                    toolResult.cache_control = { type: 'ephemeral' as const };
-                  }
-                  return {
-                    role: 'user' as const,
-                    content: [toolResult]
-                  };
-                } else if (msg.role === 'assistant' && msg.tool_calls) {
-                  // Tool callsをAnthropicのtool_use形式に変換
-                  const toolUses = msg.tool_calls.map((tc: any, tcIndex: number) => {
-                    const toolUse: any = {
-                      type: 'tool_use' as const,
-                      id: tc.id,
-                      name: tc.function.name,
-                      input: JSON.parse(tc.function.arguments)
-                    };
-                    // 最後のtool_useにcache_controlを付与
-                    if (isLastCacheable && tcIndex === msg.tool_calls!.length - 1) {
-                      toolUse.cache_control = { type: 'ephemeral' as const };
-                    }
-                    return toolUse;
-                  });
-                  return {
-                    role: 'assistant' as const,
-                    content: toolUses
-                  };
-                } else {
-                  // テキストメッセージ
-                  if (isLastCacheable) {
-                    return {
-                      role: msg.role as 'user' | 'assistant',
-                      content: [{
-                        type: 'text' as const,
-                        text: msg.content,
-                        cache_control: { type: 'ephemeral' as const }
-                      }]
-                    };
-                  }
-                  return {
-                    role: msg.role as 'user' | 'assistant',
-                    content: msg.content
-                  };
-                }
-              });
-
-            // Prepare request body for curl logging
-            const anthropicRequestBody = {
-              model: this.model,
-              system: systemMessages,
-              messages: conversationMessages,
-              tools: anthropicTools,
-              max_tokens: 8000,
-              temperature: this.temperature
-            };
-
-            // Log equivalent curl command
-            this.requestCount++;
-            const curlCommand = generateCurlCommand(this.apiKey!, anthropicRequestBody, this.requestCount, 'anthropic');
-            if (curlCommand) {
-              debugLog('Equivalent curl command:', curlCommand);
-            }
-
-            this.currentAbortController = new AbortController();
-
-            const response = await (this.client as Anthropic).messages.create({
-              model: this.model,
-              system: systemMessages,
-              messages: conversationMessages as any,
-              tools: anthropicTools,  // ツール定義はsystemにも含まれているが、API呼び出しにも必要
-              max_tokens: 8000,
-              temperature: this.temperature
-            }, {
-              signal: this.currentAbortController.signal as any
-            });
-
-            debugLog('Full Anthropic API response received:', response);
-
-            // Log cache information explicitly
-            if (response.usage) {
-              const usage = response.usage as any;
-              debugLog('Anthropic API Usage:', {
-                input_tokens: usage.input_tokens,
-                output_tokens: usage.output_tokens,
-                cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
-                cache_read_input_tokens: usage.cache_read_input_tokens || 0,
-              });
-            }
-
-            // Pass usage data to callback if available
-            if (response.usage && this.onApiUsage) {
-              this.onApiUsage({
-                prompt_tokens: response.usage.input_tokens,
-                completion_tokens: response.usage.output_tokens,
-                total_tokens: response.usage.input_tokens + response.usage.output_tokens,
-                total_time: undefined
-              });
-            }
-
-            // Anthropicのレスポンスを処理
-            const content = response.content;
-
-            // テキストコンテンツとtool_useを分離
-            const textContent = content
-              .filter((block: any) => block.type === 'text')
-              .map((block: any) => block.text)
-              .join('');
-
-            const toolUses = content.filter((block: any) => block.type === 'tool_use');
-
-            if (toolUses.length > 0) {
-              // Tool callsがある場合
-              if (textContent) {
-                if (this.onThinkingText) {
-                  this.onThinkingText(textContent);
-                }
-              }
-
-              // Anthropicのtool_useをGroq形式のtool_callsに変換して保存
-              const toolCalls = toolUses.map((toolUse: any) => ({
-                id: toolUse.id,
-                type: 'function',
-                function: {
-                  name: toolUse.name,
-                  arguments: JSON.stringify(toolUse.input)
-                }
-              }));
-
-              const assistantMsg: Message = {
-                role: 'assistant',
-                content: textContent,
-                tool_calls: toolCalls
-              };
-              this.messages.push(assistantMsg);
-
-              // Execute tool calls
-              for (const toolCall of toolCalls) {
-                if (this.isInterrupted) {
-                  debugLog('Tool execution interrupted by user');
-                  this.currentAbortController = null;
-                  return;
-                }
-
-                const result = await this.executeToolCall(toolCall);
-
-                this.messages.push({
-                  role: 'tool',
-                  tool_call_id: toolCall.id,
-                  content: JSON.stringify(result)
-                });
-
-                if (result.userRejected) {
-                  this.messages.push({
-                    role: 'system',
-                    content: `The user rejected the ${toolCall.function.name} tool execution. The response has been terminated. Please wait for the user's next instruction.`
-                  });
-                  return;
-                }
-              }
-
-              iteration++;
-              continue;
-            }
-
-            // Tool callsがない場合は最終レスポンス
-            if (this.onFinalMessage) {
-              this.onFinalMessage(textContent);
-            }
-
-            this.messages.push({
-              role: 'assistant',
-              content: textContent
-            });
-
-            this.currentAbortController = null;
-            return;
-          } else if (this.provider === 'gemini') {
-            // ===== Gemini API呼び出し =====
-            debugLog('Making API call to Gemini with model:', this.model);
-            debugLog('Messages count:', this.messages.length);
-
-            if (!this.geminiClient) {
-              throw new Error('Gemini client not initialized');
-            }
-
-            // Gemini用にメッセージを変換
-            const systemMessages = this.messages
-              .filter(msg => msg.role === 'system')
-              .map(msg => msg.content)
-              .join('\n\n');
-
-            // 会話履歴をGemini形式に変換
-            const geminiHistory: any[] = [];
-
-            for (const msg of this.messages) {
-              if (msg.role === 'system') {
-                continue; // systemメッセージはsystemInstructionとして別途渡す
-              } else if (msg.role === 'user') {
-                geminiHistory.push({
-                  role: 'user',
-                  parts: [{ text: msg.content }]
-                });
-              } else if (msg.role === 'assistant') {
-                if (msg.tool_calls && msg.tool_calls.length > 0) {
-                  // ツール呼び出しを含むassistantメッセージ
-                  const parts: any[] = [];
-                  if (msg.content) {
-                    parts.push({ text: msg.content });
-                  }
-                  for (const tc of msg.tool_calls) {
-                    // functionCallにthoughtSignatureも含める（Gemini Thinking Modelで必須）
-                    const functionCallPart: any = {
-                      functionCall: {
-                        name: tc.function.name,
-                        args: JSON.parse(tc.function.arguments)
-                      }
-                    };
-                    // thoughtSignatureがあれば含める
-                    if (tc.thoughtSignature) {
-                      functionCallPart.thoughtSignature = tc.thoughtSignature;
-                    }
-                    parts.push(functionCallPart);
-                  }
-                  geminiHistory.push({
-                    role: 'model',
-                    parts
-                  });
-                } else {
-                  geminiHistory.push({
-                    role: 'model',
-                    parts: [{ text: msg.content }]
-                  });
-                }
-              } else if (msg.role === 'tool') {
-                // ツール結果
-                geminiHistory.push({
-                  role: 'user',
-                  parts: [{
-                    functionResponse: {
-                      name: this.getToolNameFromId(msg.tool_call_id!),
-                      response: JSON.parse(msg.content)
-                    }
-                  }]
-                });
-              }
-            }
-
-            // 最後のuserメッセージを取り出す（generateContentに渡すため）
-            let currentMessage: any = null;
-            if (geminiHistory.length > 0 && geminiHistory[geminiHistory.length - 1].role === 'user') {
-              currentMessage = geminiHistory.pop();
-            }
-
-            const geminiTools = convertAllToolSchemasForGemini(ALL_TOOL_SCHEMAS);
-
-            this.currentAbortController = new AbortController();
-
-            const response = await this.geminiClient.models.generateContent({
-              model: this.model,
-              contents: currentMessage ? [...geminiHistory, currentMessage] : geminiHistory,
-              config: {
-                systemInstruction: systemMessages,
-                temperature: this.temperature,
-                maxOutputTokens: 8000,
-                tools: [{
-                  functionDeclarations: geminiTools
-                }]
-              }
-            });
-
-            debugLog('Full Gemini API response received:', response);
-
-            // Pass usage data to callback if available
-            if (response.usageMetadata && this.onApiUsage) {
-              this.onApiUsage({
-                prompt_tokens: response.usageMetadata.promptTokenCount || 0,
-                completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
-                total_tokens: response.usageMetadata.totalTokenCount || 0,
-                total_time: undefined
-              });
-            }
-
-            // Geminiのレスポンスを処理
-            const candidate = response.candidates?.[0];
-            if (!candidate || !candidate.content) {
-              throw new Error('No valid response from Gemini');
-            }
-
-            const parts = candidate.content.parts || [];
-
-            // テキストとfunctionCallを分離
-            const textParts = parts.filter((p: any) => p.text);
-            const functionCalls = parts.filter((p: any) => p.functionCall);
-
-            const textContent = textParts.map((p: any) => p.text).join('');
-
-            if (functionCalls.length > 0) {
-              // Function callsがある場合
-              if (textContent) {
-                if (this.onThinkingText) {
-                  this.onThinkingText(textContent);
-                }
-              }
-
-              // GeminiのfunctionCallをGroq形式のtool_callsに変換して保存
-              // thoughtSignatureも保存（Gemini Thinking Modelで必須）
-              const toolCalls: ToolCall[] = functionCalls.map((fc: any, index: number) => ({
-                id: `gemini_call_${Date.now()}_${index}`,
-                type: 'function',
-                function: {
-                  name: fc.functionCall.name,
-                  arguments: JSON.stringify(fc.functionCall.args || {})
-                },
-                thoughtSignature: fc.thoughtSignature  // Thinking Modelの署名を保持
-              }));
-
-              const assistantMsg: Message = {
-                role: 'assistant',
-                content: textContent,
-                tool_calls: toolCalls
-              };
-              this.messages.push(assistantMsg);
-
-              // Execute tool calls
-              for (const toolCall of toolCalls) {
-                if (this.isInterrupted) {
-                  debugLog('Tool execution interrupted by user');
-                  this.currentAbortController = null;
-                  return;
-                }
-
-                const result = await this.executeToolCall(toolCall);
-
-                this.messages.push({
-                  role: 'tool',
-                  tool_call_id: toolCall.id,
-                  content: JSON.stringify(result)
-                });
-
-                if (result.userRejected) {
-                  this.messages.push({
-                    role: 'system',
-                    content: `The user rejected the ${toolCall.function.name} tool execution. The response has been terminated. Please wait for the user's next instruction.`
-                  });
-                  return;
-                }
-              }
-
-              iteration++;
-              continue;
-            }
-
-            // Function callsがない場合は最終レスポンス
-            if (this.onFinalMessage) {
-              this.onFinalMessage(textContent);
-            }
-
-            this.messages.push({
-              role: 'assistant',
-              content: textContent
-            });
-
-            this.currentAbortController = null;
+          // userRejected の場合は終了
+          if (result.userRejected) {
             return;
           }
+
+          // 継続判定
+          if (!result.shouldContinue) {
+            return;
+          }
+
+          if (result.incrementIteration) {
+            iteration++;
+          }
+          continue;
 
         } catch (error) {
           this.currentAbortController = null; // Clear abort controller
@@ -1110,22 +622,7 @@ export class Agent {
     }
   }
 
-  // Helper method to get tool name from tool_call_id for Gemini functionResponse
-  private getToolNameFromId(toolCallId: string): string {
-    // Look through messages to find the tool call with this ID
-    for (const msg of this.messages) {
-      if (msg.tool_calls) {
-        for (const tc of msg.tool_calls) {
-          if (tc.id === toolCallId) {
-            return tc.function.name;
-          }
-        }
-      }
-    }
-    return 'unknown';
-  }
-
-  private async executeToolCall(toolCall: any): Promise<Record<string, any>> {
+  private async executeToolCall(toolCall: ToolCall, ctx: ChatContext): Promise<Record<string, unknown> & { userRejected?: boolean }> {
     // Initialize toolName outside try block so it's accessible in catch
     let toolName = 'unknown';
     try {
@@ -1254,7 +751,7 @@ export class Agent {
         this.onToolEnd(toolName, result);
       }
 
-      return result;
+      return result as unknown as Record<string, unknown> & { userRejected?: boolean };
 
     } catch (error) {
       const errorMsg = `Tool execution error: ${error}`;

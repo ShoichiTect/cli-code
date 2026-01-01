@@ -71,7 +71,7 @@ export interface ChatContext {
 export type ExecuteToolCallFn = (
   toolCall: ToolCall,
   ctx: ChatContext
-) => Promise<{ result?: unknown; userRejected?: boolean }>;
+) => Promise<Record<string, unknown> & { userRejected?: boolean }>;
 
 /** デバッグログ関数の型 */
 export type DebugLogFn = (message: string, data?: unknown) => void;
@@ -81,7 +81,7 @@ export type GenerateCurlCommandFn = (
   apiKey: string,
   requestBody: unknown,
   requestCount: number,
-  provider?: string
+  provider?: 'groq' | 'anthropic' | 'gemini'
 ) => string | null;
 
 /** チャット処理の結果 */
