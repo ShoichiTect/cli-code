@@ -4,8 +4,6 @@
  */
 
 import * as readline from 'readline';
-import * as fs from 'fs';
-import * as path from 'path';
 import chalk from 'chalk';
 import {Agent} from './agent.js';
 import {
@@ -14,11 +12,6 @@ import {
 	Spinner,
 	selectWithNumbers,
 } from './cli-utils.js';
-import {
-	printColoredDiff,
-	generateEditFileDiff,
-	generateCreateFileDiff,
-} from './diff-utils.js';
 import {parseMarkdown, parseInlineElements} from '../utils/markdown.js';
 import {DANGEROUS_TOOLS} from '../tools/tool-schemas.js';
 import {learn} from '../utils/learn-log.js';
@@ -174,15 +167,8 @@ export class SimpleCLI {
 
 		console.log(chalk.yellow(`\n Tool requires approval: ${toolName}`));
 
-		// Show diff preview for file operations
-		if (toolName === 'edit_file' && toolArgs.file_path) {
-			await this.showDiffPreview(toolName, toolArgs);
-		} else if (toolName === 'create_file' && toolArgs.file_path) {
-			generateCreateFileDiff(toolArgs.content || '', toolArgs.file_path);
-		} else {
-			// Show args for other tools
-			console.log(chalk.gray(JSON.stringify(toolArgs, null, 2)));
-		}
+		// Show args for other tools
+		console.log(chalk.gray(JSON.stringify(toolArgs, null, 2)));
 
 		// Dangerous tools don't get auto-approve option
 		if (isDangerous) {
@@ -202,33 +188,6 @@ export class SimpleCLI {
 			return {approved: true, autoApproveSession: true};
 		}
 		return {approved: false};
-	}
-
-	/**
-	 * Show diff preview for edit_file operation
-	 */
-	private async showDiffPreview(
-		toolName: string,
-		toolArgs: Record<string, any>,
-	): Promise<void> {
-		if (toolName === 'edit_file' && toolArgs.file_path) {
-			try {
-				const filePath = path.resolve(toolArgs.file_path);
-				const currentContent = await fs.promises.readFile(filePath, 'utf-8');
-				generateEditFileDiff(
-					currentContent,
-					toolArgs.old_text || '',
-					toolArgs.new_text || '',
-					toolArgs.file_path,
-					toolArgs.replace_all,
-				);
-			} catch (error) {
-				console.log(
-					chalk.yellow(`Cannot read file for diff preview: ${error}`),
-				);
-				console.log(chalk.gray(JSON.stringify(toolArgs, null, 2)));
-			}
-		}
 	}
 
 	/**
@@ -263,21 +222,6 @@ export class SimpleCLI {
 				// Don't print content to save space
 				if (result.message) {
 					console.log(chalk.dim(result.message));
-				}
-				break;
-
-			case 'create_file':
-			case 'edit_file':
-				if (result.message) {
-					console.log(chalk.dim(result.message));
-				}
-				// Show diff for completed file operations
-				if (this.lastToolArgs) {
-					if (name === 'create_file') {
-						// Already shown during approval
-					} else if (name === 'edit_file') {
-						// Already shown during approval
-					}
 				}
 				break;
 

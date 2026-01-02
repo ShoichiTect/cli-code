@@ -2,8 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {exec} from 'child_process';
 import {promisify} from 'util';
-import {writeFile, createDirectory, displayTree} from '../utils/file-ops.js';
-import {setReadFilesTracker} from './validators.js';
+import {displayTree} from '../utils/file-ops.js';
 import {validateFileOperation} from './security-filter.js';
 
 const execAsync = promisify(exec);
@@ -38,17 +37,6 @@ export interface ToolResult {
 	error?: string;
 }
 
-// Track which files have been read in the current session
-const readFiles = new Set<string>();
-
-// Export readFiles for validator access
-export function getReadFilesTracker(): Set<string> {
-	return readFiles;
-}
-
-// Initialize validator with readFiles tracker
-setReadFilesTracker(readFiles);
-
 /**
  * Format key parameters for tool call display
  */
@@ -61,9 +49,6 @@ export function formatToolParams(
 
 	const paramMappings: Record<string, string[]> = {
 		read_file: ['file_path'],
-		create_file: ['file_path'],
-		edit_file: ['file_path'],
-		delete_file: ['file_path'],
 		list_files: ['directory'],
 		search_files: ['pattern'],
 		execute_command: ['command'],
@@ -193,14 +178,10 @@ export async function readFile(
 
 			const selectedLines = lines.slice(startIdx, endIdx);
 			const selectedContent = selectedLines.join('\n');
-			// Add file to read tracking for partial reads too
-			readFiles.add(resolvedPath);
 			const message = `Read lines ${startLine}-${endIdx} from ${filePath}`;
 
 			return createToolResponse(true, selectedContent, message);
 		} else {
-			// Add file to read tracking
-			readFiles.add(resolvedPath);
 			const message = `Read ${lines.length} lines from ${filePath}`;
 			return createToolResponse(true, content, message);
 		}
@@ -214,220 +195,6 @@ export async function readFile(
 			'',
 			'Error: Failed to read file',
 		);
-	}
-}
-
-/**
- * Create a new file or directory with specified content
- */
-export async function createFile(
-	filePath: string,
-	content: string,
-	fileType: string = 'file',
-	overwrite: boolean = false,
-): Promise<ToolResult> {
-	try {
-		// Security check: Block creating/writing to dangerous files
-		const validation = validateFileOperation(filePath, 'write');
-		if (!validation.allowed) {
-			return createToolResponse(false, undefined, '', validation.reason);
-		}
-
-		const targetPath = path.resolve(filePath);
-
-		// Check if file exists and handle overwrite
-		const exists = await fs.promises
-			.access(targetPath)
-			.then(() => true)
-			.catch(() => false);
-		if (exists && !overwrite) {
-			return createToolResponse(
-				false,
-				undefined,
-				'',
-				'Error: File already exists, use overwrite=true',
-			);
-		}
-
-		if (fileType === 'directory') {
-			const result = await createDirectory(targetPath);
-			if (result) {
-				return createToolResponse(
-					true,
-					{path: targetPath, type: 'directory'},
-					`Directory created: ${filePath}`,
-				);
-			} else {
-				return createToolResponse(
-					false,
-					undefined,
-					'',
-					'Error: Failed to create directory',
-				);
-			}
-		} else if (fileType === 'file') {
-			const result = await writeFile(targetPath, content, overwrite, true);
-			if (result) {
-				return createToolResponse(true, undefined, `File created: ${filePath}`);
-			} else {
-				return createToolResponse(
-					false,
-					undefined,
-					'',
-					'Error: Failed to create file',
-				);
-			}
-		} else {
-			return createToolResponse(
-				false,
-				undefined,
-				'',
-				"Error: Invalid file_type, must be 'file' or 'directory'",
-			);
-		}
-	} catch (error) {
-		return createToolResponse(
-			false,
-			undefined,
-			'',
-			'Error: Failed to create file or directory',
-		);
-	}
-}
-
-/**
- * Edit a file by replacing exact text strings
- * Note: Arguments are pre-validated by the validation system before this function is called
- */
-export async function editFile(
-	filePath: string,
-	oldText: string,
-	newText: string,
-	replaceAll: boolean = false,
-): Promise<ToolResult> {
-	try {
-		// Security check: Block editing dangerous files
-		const validation = validateFileOperation(filePath, 'write');
-		if (!validation.allowed) {
-			return createToolResponse(false, undefined, '', validation.reason);
-		}
-
-		const resolvedPath = path.resolve(filePath);
-
-		// Read current content (validation already confirmed file exists and was read)
-		const originalContent = await fs.promises.readFile(resolvedPath, 'utf-8');
-
-		// Perform the replacement (validation already confirmed old_text exists and is unambiguous)
-		let updatedContent: string;
-		if (replaceAll) {
-			updatedContent = originalContent.split(oldText).join(newText);
-		} else {
-			updatedContent = originalContent.replace(oldText, newText);
-		}
-
-		// Write the updated content
-		const result = await writeFile(filePath, updatedContent, true, true);
-		if (result) {
-			const replacementCount = replaceAll
-				? originalContent.split(oldText).length - 1
-				: 1;
-			return createToolResponse(
-				true,
-				undefined,
-				`Replaced ${replacementCount} occurrence(s) in ${filePath}`,
-			);
-		} else {
-			return createToolResponse(
-				false,
-				undefined,
-				'',
-				'Error: Failed to write changes to file',
-			);
-		}
-	} catch (error) {
-		return createToolResponse(
-			false,
-			undefined,
-			'',
-			`Error: Failed to edit file - ${error}`,
-		);
-	}
-}
-
-/**
- * Delete a file or directory with safety checks
- */
-export async function deleteFile(
-	filePath: string,
-	recursive: boolean = false,
-): Promise<ToolResult> {
-	try {
-		// Security check: Block deleting dangerous files
-		const validation = validateFileOperation(filePath, 'delete');
-		if (!validation.allowed) {
-			return createToolResponse(false, undefined, '', validation.reason);
-		}
-
-		const targetPath = path.resolve(filePath);
-		const currentWorkingDir = path.resolve(process.cwd());
-
-		// Safety check 1: Never delete the root directory itself
-		if (targetPath === currentWorkingDir) {
-			return createToolResponse(
-				false,
-				undefined,
-				'',
-				'Error: Cannot delete the root project directory',
-			);
-		}
-
-		// Safety check 2: Never delete anything outside the current working directory
-		if (!targetPath.startsWith(currentWorkingDir)) {
-			return createToolResponse(
-				false,
-				undefined,
-				'',
-				'Error: Cannot delete files outside the project directory',
-			);
-		}
-
-		const exists = await fs.promises
-			.access(targetPath)
-			.then(() => true)
-			.catch(() => false);
-		if (!exists) {
-			return createToolResponse(false, undefined, '', 'Error: Path not found');
-		}
-
-		const stats = await fs.promises.stat(targetPath);
-		if (stats.isDirectory() && !recursive) {
-			// Check if directory is empty
-			const items = await fs.promises.readdir(targetPath);
-			if (items.length > 0) {
-				return createToolResponse(
-					false,
-					undefined,
-					'',
-					'Error: Directory not empty, use recursive=true',
-				);
-			}
-		}
-
-		// Perform deletion
-		if (stats.isDirectory()) {
-			await fs.promises.rmdir(targetPath, {recursive});
-		} else {
-			await fs.promises.unlink(targetPath);
-		}
-
-		const fileType = stats.isDirectory() ? 'directory' : 'file';
-		return createToolResponse(
-			true,
-			undefined,
-			`Deleted ${fileType}: ${filePath}`,
-		);
-	} catch (error) {
-		return createToolResponse(false, undefined, '', 'Error: Failed to delete');
 	}
 }
 
@@ -911,9 +678,6 @@ export async function executeCommand(
 // Tool Registry: maps tool names to functions
 export const TOOL_REGISTRY = {
 	read_file: readFile,
-	create_file: createFile,
-	edit_file: editFile,
-	delete_file: deleteFile,
 	list_files: listFiles,
 	search_files: searchFiles,
 	execute_command: executeCommand,
@@ -950,25 +714,6 @@ export async function executeTool(
 					toolArgs.start_line,
 					toolArgs.end_line,
 				);
-				break;
-			case 'create_file':
-				result = await toolFunction(
-					toolArgs.file_path,
-					toolArgs.content,
-					toolArgs.file_type,
-					toolArgs.overwrite,
-				);
-				break;
-			case 'edit_file':
-				result = await toolFunction(
-					toolArgs.file_path,
-					toolArgs.old_text,
-					toolArgs.new_text,
-					toolArgs.replace_all,
-				);
-				break;
-			case 'delete_file':
-				result = await toolFunction(toolArgs.file_path, toolArgs.recursive);
 				break;
 			case 'list_files':
 				result = await toolFunction(

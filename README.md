@@ -127,12 +127,10 @@ cli-code/
 │   │   ├── main.ts             # CLI entry point
 │   │   ├── simple-cli.ts       # Main CLI class (terminal I/O)
 │   │   ├── cli-utils.ts        # CLI utility functions (fzf, spinner, etc.)
-│   │   └── diff-utils.ts       # Diff display utilities
 │   ├── tools/
 │   │   ├── tool-schemas.ts     # Tool schema definitions
 │   │   ├── tools.ts            # Tool implementations
 │   │   ├── security-filter.ts  # Security filtering for tool execution
-│   │   └── validators.ts       # Input validation utilities
 │   └── utils/
 │       ├── constants.ts        # Application constants
 │       ├── file-ops.ts         # File system operations

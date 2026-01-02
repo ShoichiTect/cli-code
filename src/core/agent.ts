@@ -13,10 +13,6 @@ import {
 	type ToolName,
 } from '../tools/tool-types.js';
 import {
-	validateReadBeforeEdit,
-	getReadBeforeEditError,
-} from '../tools/validators.js';
-import {
 	DANGEROUS_TOOLS,
 	APPROVAL_REQUIRED_TOOLS,
 } from '../tools/tool-schemas.js';
@@ -767,19 +763,6 @@ export class Agent {
 			// Notify UI about tool start
 			if (this.onToolStart) {
 				this.onToolStart(toolName, toolArgs);
-			}
-
-			// Check read-before-edit for edit tools
-			if (toolName === 'edit_file') {
-				const editArgs = toolArgs as ToolArgsByName['edit_file'];
-				if (editArgs.file_path && !validateReadBeforeEdit(editArgs.file_path)) {
-					const errorMessage = getReadBeforeEditError(editArgs.file_path);
-					const result = {error: errorMessage, success: false};
-					if (this.onToolEnd) {
-						this.onToolEnd(toolName, result);
-					}
-					return result;
-				}
 			}
 
 			// Check if tool needs approval (only after validation passes)

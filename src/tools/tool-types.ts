@@ -1,8 +1,5 @@
 export const TOOL_NAMES = [
 	'read_file',
-	'create_file',
-	'edit_file',
-	'delete_file',
 	'list_files',
 	'search_files',
 	'execute_command',
@@ -14,25 +11,6 @@ export type ReadFileArgs = {
 	file_path: string;
 	start_line?: number;
 	end_line?: number;
-};
-
-export type CreateFileArgs = {
-	file_path: string;
-	content: string;
-	file_type?: 'file' | 'directory';
-	overwrite?: boolean;
-};
-
-export type EditFileArgs = {
-	file_path: string;
-	old_text: string;
-	new_text: string;
-	replace_all?: boolean;
-};
-
-export type DeleteFileArgs = {
-	file_path: string;
-	recursive?: boolean;
 };
 
 export type ListFilesArgs = {
@@ -65,18 +43,12 @@ export type ExecuteCommandArgs = {
 
 export type ToolArgs =
 	| ReadFileArgs
-	| CreateFileArgs
-	| EditFileArgs
-	| DeleteFileArgs
 	| ListFilesArgs
 	| SearchFilesArgs
 	| ExecuteCommandArgs;
 
 export type ToolArgsByName = {
 	read_file: ReadFileArgs;
-	create_file: CreateFileArgs;
-	edit_file: EditFileArgs;
-	delete_file: DeleteFileArgs;
 	list_files: ListFilesArgs;
 	search_files: SearchFilesArgs;
 	execute_command: ExecuteCommandArgs;
