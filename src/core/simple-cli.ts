@@ -281,10 +281,7 @@ export class SimpleCLI {
 		toolArgs?: ToolArgsByName[ToolName],
 	): string | null {
 		if (!toolArgs) return null;
-		const formatted = formatToolParams(
-			name,
-			toolArgs as Record<string, unknown>,
-		);
+		const formatted = formatToolParams(name, toolArgs);
 		return formatted ? formatted : null;
 	}
 

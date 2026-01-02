@@ -7,6 +7,7 @@ import {
 	validateCommandOperation,
 	validateFileOperation,
 } from './security-filter.js';
+import type {ToolArgsByName, ToolName} from './tool-types.js';
 
 const execAsync = promisify(exec);
 
@@ -49,8 +50,8 @@ export interface ToolResult {
  * Format key parameters for tool call display
  */
 export function formatToolParams(
-	toolName: string,
-	toolArgs: Record<string, any>,
+	toolName: ToolName,
+	toolArgs: ToolArgsByName[ToolName],
 	options: {includePrefix?: boolean; separator?: string} = {},
 ): string {
 	const {includePrefix = true, separator = '='} = options;
@@ -71,7 +72,7 @@ export function formatToolParams(
 	const paramParts = keyParams
 		.filter(param => param in toolArgs)
 		.map(param => {
-			let value = toolArgs[param];
+			let value = (toolArgs as Record<string, unknown>)[param];
 			// Truncate long values
 			if (typeof value === 'string' && value.length > 50) {
 				value = value.substring(0, 47) + '...';
@@ -716,9 +717,9 @@ export const TOOL_REGISTRY = {
 /**
  * Execute a tool by name with given arguments
  */
-export async function executeTool(
-	toolName: string,
-	toolArgs: Record<string, any>,
+export async function executeTool<T extends ToolName>(
+	toolName: T,
+	toolArgs: ToolArgsByName[T],
 ): Promise<ToolResult> {
 	if (!(toolName in TOOL_REGISTRY)) {
 		const errorMsg = `Unknown tool: ${toolName}`;
@@ -727,8 +728,6 @@ export async function executeTool(
 	}
 
 	try {
-		const toolFunction = (TOOL_REGISTRY as any)[toolName];
-
 		// Debug: log tool execution start
 		toolDebugLog(`Executing tool: ${toolName}`, {
 			args: toolArgs,
@@ -738,44 +737,52 @@ export async function executeTool(
 
 		// Call the function with the appropriate arguments based on the tool
 		switch (toolName) {
-			case 'read_file':
-				result = await toolFunction(
-					toolArgs.file_path,
-					toolArgs.start_line,
-					toolArgs.end_line,
+			case 'read_file': {
+				const args = toolArgs as ToolArgsByName['read_file'];
+				result = await readFile(
+					args.file_path,
+					args.start_line,
+					args.end_line,
 				);
 				break;
-			case 'list_files':
-				result = await toolFunction(
-					toolArgs.directory,
-					toolArgs.pattern,
-					toolArgs.recursive,
-					toolArgs.show_hidden,
+			}
+			case 'list_files': {
+				const args = toolArgs as ToolArgsByName['list_files'];
+				result = await listFiles(
+					args.directory,
+					args.pattern,
+					args.recursive,
+					args.show_hidden,
 				);
 				break;
-			case 'search_files':
-				result = await toolFunction(
-					toolArgs.pattern,
-					toolArgs.file_pattern,
-					toolArgs.directory,
-					toolArgs.case_sensitive,
-					toolArgs.pattern_type,
-					toolArgs.file_types,
-					toolArgs.exclude_dirs,
-					toolArgs.exclude_files,
-					toolArgs.max_results,
-					toolArgs.context_lines,
-					toolArgs.group_by_file,
+			}
+			case 'search_files': {
+				const args = toolArgs as ToolArgsByName['search_files'];
+				result = await searchFiles(
+					args.pattern,
+					args.file_pattern,
+					args.directory,
+					args.case_sensitive,
+					args.pattern_type,
+					args.file_types,
+					args.exclude_dirs,
+					args.exclude_files,
+					args.max_results,
+					args.context_lines,
+					args.group_by_file,
 				);
 				break;
-			case 'execute_command':
-				result = await toolFunction(
-					toolArgs.command,
-					toolArgs.command_type,
-					toolArgs.working_directory,
-					toolArgs.timeout,
+			}
+			case 'execute_command': {
+				const args = toolArgs as ToolArgsByName['execute_command'];
+				result = await executeCommand(
+					args.command,
+					args.command_type,
+					args.working_directory,
+					args.timeout,
 				);
 				break;
+			}
 			default:
 				result = createToolResponse(
 					false,
