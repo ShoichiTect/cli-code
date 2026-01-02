@@ -52,16 +52,13 @@ Options:
 
 On first use, start a chat with `cli` and type the `/login` command to configure your API key.
 
-The CLI now supports **OpenAI‑compatible** API calls for all providers. When using the OpenAI format, the underlying Groq SDK is still used, so you must set the appropriate endpoint (e.g., `https://api.openai.com/v1` for OpenAI) via the `OPENAI_API_BASE` environment variable or in the configuration.
-
-You can choose between **Groq**, **Anthropic**, **Gemini**, or **OpenAI** as your AI provider:
+You can choose between **Groq**, **Anthropic**, or **Gemini** as your AI provider:
 
 - **Groq**: Get your API key from the [Groq Console](https://console.groq.com/keys)
 - **Anthropic**: Get your API key from the [Anthropic Console](https://console.anthropic.com/keys)
 - **Gemini**: Get your API key from [Google AI Studio](https://aistudio.google.com/apikey)
-- **OpenAI**: Get your API key from the [OpenAI Platform](https://platform.openai.com/account/api-keys)
 
-This creates a `.groq/` folder in your home directory that stores your API keys, default model selection, and any other config you wish to add.
+This creates a `.groq/` folder in your home directory that stores your API keys, default model selection, provider choice, and safety settings.
 
 You can also set your API keys via environment variables:
 
@@ -69,8 +66,6 @@ You can also set your API keys via environment variables:
 export GROQ_API_KEY=your_groq_api_key_here
 export ANTHROPIC_API_KEY=your_anthropic_api_key_here
 export GEMINI_API_KEY=your_gemini_api_key_here
-export OPENAI_API_KEY=your_openai_api_key_here
-export OPENAI_API_BASE=https://api.openai.com/v1   # required when using OpenAI format
 ```
 
 ### Proxy Configuration
@@ -96,6 +91,7 @@ Priority: `--proxy` > `HTTPS_PROXY` > `HTTP_PROXY`
 - `/model` - Switch AI provider and select model
 - `/clear` - Clear chat history and context
 - `/stats` - Display session statistics and token usage
+- `/prompt <name>` - Load and send a prompt from `~/.config/cli-code/prompts/<name>.txt`
 
 ## Development
 
@@ -118,24 +114,24 @@ npm run dev        # Build in watch mode
 ```
 cli-code/
 ├── src/
-│   ├── commands/
-│   │   ├── definitions/        # Individual command implementations
-│   │   ├── base.ts             # Base command interface
-│   │   └── index.ts            # Command exports
 │   ├── core/
 │   │   ├── agent.ts            # AI agent implementation
 │   │   ├── main.ts             # CLI entry point
 │   │   ├── simple-cli.ts       # Main CLI class (terminal I/O)
 │   │   ├── cli-utils.ts        # CLI utility functions (fzf, spinner, etc.)
+│   │   └── providers/          # Provider integrations (Groq/Anthropic/Gemini)
 │   ├── tools/
 │   │   ├── tool-schemas.ts     # Tool schema definitions
 │   │   ├── tools.ts            # Tool implementations
 │   │   ├── security-filter.ts  # Security filtering for tool execution
+│   │   └── tool-types.ts        # Shared tool typing
 │   └── utils/
 │       ├── constants.ts        # Application constants
 │       ├── file-ops.ts         # File system operations
+│       ├── learn-log.ts         # Learning/debug logging
 │       ├── local-settings.ts   # Local configuration management
 │       ├── markdown.ts         # Markdown processing utilities
+│       ├── proxy-config.ts     # Proxy utilities
 │       └── tool-schema-converter.ts # Convert tool schemas between provider formats
 ├── package.json
 ├── tsconfig.json
@@ -171,6 +167,17 @@ The CLI supports multiple AI providers. Use `/model` to switch between them:
 - gemini-2.5-flash
 - gemini-2.0-flash
 - gemini-2.0-flash-lite
+
+## Safety Configuration
+
+The CLI blocks access to sensitive files and directories by default (e.g., `.env`, `.ssh`, `.aws`, `node_modules`). You can extend the denylist in `~/.groq/local-settings.json`:
+
+```json
+{
+  "dangerousDirectories": [".git", ".ssh", "node_modules"],
+  "dangerousFiles": [".env", "secrets.json"]
+}
+```
 
 ## Customization
 
@@ -222,7 +229,7 @@ This project is forked from [groq-code-cli](https://github.com/build-with-groq/g
 
 - **Removed React Ink** - Uses standard terminal I/O via readline instead of React Ink TUI
 - **Simplified dependencies** - No React, Ink, or related packages
-- **Added Claude support** - Anthropic's Claude models are now available as a provider
+- **Added Claude + Gemini support** - Anthropic and Gemini models are available as providers
 - **fzf integration** - Model selection uses fzf for fuzzy finding (falls back to numbered list)
 
 ## License
