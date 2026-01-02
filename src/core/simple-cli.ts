@@ -115,7 +115,7 @@ export class SimpleCLI {
 				console.log(this.formatMarkdown(displayed));
 			},
 
-			onToolStart: (name) => {
+			onToolStart: name => {
 				this.spinner?.stop();
 				console.log(chalk.blue(`\n ${name}...`));
 			},
@@ -285,7 +285,10 @@ export class SimpleCLI {
 		return formatted ? formatted : null;
 	}
 
-	private formatStackTrace(stack?: string, stripMessage = false): string | null {
+	private formatStackTrace(
+		stack?: string,
+		stripMessage = false,
+	): string | null {
 		if (!stack) return null;
 		let cleaned = stack;
 		if (stripMessage) {

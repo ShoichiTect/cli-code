@@ -241,10 +241,7 @@ export async function listFiles(
 		}
 
 		// Get tree display output
-		const treeOutput = await displayTree(
-			directory,
-			showHidden,
-		);
+		const treeOutput = await displayTree(directory, showHidden);
 
 		return createToolResponse(true, treeOutput, `Listed ${directory}`);
 	} catch (error) {
@@ -336,8 +333,7 @@ export async function searchFiles(
 					break;
 				}
 				case 'substring':
-				default:
-				{
+				default: {
 					searchRegex = new RegExp(
 						escapeRegex(pattern),
 						caseSensitive ? 'g' : 'gi',
@@ -778,11 +774,7 @@ export async function executeTool<T extends ToolName>(
 		switch (toolName) {
 			case 'read_file': {
 				const args = toolArgs as ToolArgsByName['read_file'];
-				result = await readFile(
-					args.file_path,
-					args.start_line,
-					args.end_line,
-				);
+				result = await readFile(args.file_path, args.start_line, args.end_line);
 				break;
 			}
 			case 'list_files': {

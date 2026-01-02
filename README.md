@@ -174,8 +174,8 @@ The CLI blocks access to sensitive files and directories by default (e.g., `.env
 
 ```json
 {
-  "dangerousDirectories": [".git", ".ssh", "node_modules"],
-  "dangerousFiles": [".env", "secrets.json"]
+	"dangerousDirectories": [".git", ".ssh", "node_modules"],
+	"dangerousFiles": [".env", "secrets.json"]
 }
 ```
 

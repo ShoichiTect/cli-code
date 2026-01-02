@@ -231,9 +231,10 @@ export function validateFileOperation(
  * Validate command execution against security policy
  * Returns { allowed: boolean, reason?: string }
  */
-export function validateCommandOperation(
-	command: string,
-): {allowed: boolean; reason?: string} {
+export function validateCommandOperation(command: string): {
+	allowed: boolean;
+	reason?: string;
+} {
 	if (!command) {
 		return {allowed: true};
 	}

@@ -2,11 +2,7 @@ import Groq from 'groq-sdk';
 import type {ClientOptions} from 'groq-sdk';
 import Anthropic from '@anthropic-ai/sdk';
 import {GoogleGenAI} from '@google/genai';
-import {
-	executeTool,
-	setDebugEnabled,
-	type ToolResult,
-} from '../tools/tools.js';
+import {executeTool, setDebugEnabled, type ToolResult} from '../tools/tools.js';
 import {
 	isToolName,
 	type ToolArgsByName,
@@ -734,9 +730,7 @@ export class Agent {
 
 			// Handle truncated tool calls
 			try {
-				const parsedArgs = JSON.parse(
-					toolCall.function.arguments,
-				) as unknown;
+				const parsedArgs = JSON.parse(toolCall.function.arguments) as unknown;
 				if (!isToolName(toolName)) {
 					return {
 						error: `Unknown tool: ${toolName}`,
