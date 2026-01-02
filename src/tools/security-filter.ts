@@ -53,7 +53,6 @@ export function isDangerousFile(filePath: string): boolean {
 	// First check if any dangerous directory is in the path
 	// This catches paths like .ssh/id_rsa, /home/user/.aws/credentials, etc.
 	for (const dangerousDir of DANGEROUS_DIRECTORIES) {
-		const dangerousDirLower = dangerousDir.toLowerCase();
 		// Match patterns like: .ssh/, .ssh\, /.ssh/, \.ssh\, or just .ssh at start
 		if (
 			lowerPath.includes('/.ssh/') ||
