@@ -3,77 +3,10 @@ import * as path from 'path';
 import {IGNORE_PATTERNS} from './constants.js';
 
 /**
- * Write content to a file with safety checks
- */
-export async function writeFile(
-	filepath: string,
-	content: string,
-	force: boolean = false,
-	backup: boolean = false,
-): Promise<boolean> {
-	const filePath = path.resolve(filepath);
-
-	try {
-		// Create parent directories if they don't exist
-		const parentDir = path.dirname(filePath);
-		await fs.promises.mkdir(parentDir, {recursive: true});
-
-		await fs.promises.writeFile(filePath, content, 'utf-8');
-		return true;
-	} catch (error) {
-		return false;
-	}
-}
-
-/**
- * Create a directory with parent directories
- */
-export async function createDirectory(directoryPath: string): Promise<boolean> {
-	try {
-		await fs.promises.mkdir(directoryPath, {recursive: true});
-		return true;
-	} catch (error) {
-		return false;
-	}
-}
-
-/**
- * Delete a file with safety checks
- */
-export async function deleteFile(
-	filepath: string,
-	force: boolean = false,
-): Promise<boolean> {
-	const filePath = path.resolve(filepath);
-
-	try {
-		const stats = await fs.promises.stat(filePath);
-
-		if (!force) {
-			return false;
-		}
-
-		if (stats.isFile()) {
-			await fs.promises.unlink(filePath);
-		} else if (stats.isDirectory()) {
-			await fs.promises.rmdir(filePath, {recursive: true});
-		}
-		return true;
-	} catch (error: any) {
-		if (error.code === 'ENOENT') {
-			return false;
-		}
-		return false;
-	}
-}
-
-/**
  * Simple tree display for list_files tool
  */
 export async function displayTree(
 	directory: string = '.',
-	pattern: string = '*',
-	recursive: boolean = false,
 	showHidden: boolean = false,
 ): Promise<string> {
 	const directoryPath = path.resolve(directory);

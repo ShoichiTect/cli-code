@@ -212,8 +212,6 @@ export async function readFile(
  */
 export async function listFiles(
 	directory: string = '.',
-	pattern: string = '*',
-	recursive: boolean = false,
 	showHidden: boolean = false,
 ): Promise<ToolResult> {
 	try {
@@ -245,8 +243,6 @@ export async function listFiles(
 		// Get tree display output
 		const treeOutput = await displayTree(
 			directory,
-			pattern,
-			recursive,
 			showHidden,
 		);
 
@@ -791,12 +787,7 @@ export async function executeTool<T extends ToolName>(
 			}
 			case 'list_files': {
 				const args = toolArgs as ToolArgsByName['list_files'];
-				result = await listFiles(
-					args.directory,
-					args.pattern,
-					args.recursive,
-					args.show_hidden,
-				);
+				result = await listFiles(args.directory, args.show_hidden);
 				break;
 			}
 			case 'search_files': {

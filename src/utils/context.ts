@@ -91,24 +91,6 @@ export function generateProjectContext(
 	return {json, markdown};
 }
 
-export function writeProjectContext(
-	rootDir: string = process.cwd(),
-	options: GenerateContextOptions = {},
-): {mdPath: string; jsonPath: string} {
-	const {json, markdown} = generateProjectContext(rootDir, options);
-
-	const outputDir = path.join(rootDir, '.groq');
-	fs.mkdirSync(outputDir, {recursive: true});
-
-	const mdPath = path.join(outputDir, 'context.md');
-	const jsonPath = path.join(outputDir, 'context.json');
-
-	fs.writeFileSync(mdPath, markdown, 'utf-8');
-	fs.writeFileSync(jsonPath, JSON.stringify(json, null, 2), 'utf-8');
-
-	return {mdPath, jsonPath};
-}
-
 function readPackageJson(
 	rootDir: string,
 ): ProjectContextJson['package'] | null {
