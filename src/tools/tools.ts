@@ -23,7 +23,7 @@ export function isDebugEnabled(): boolean {
 	return debugEnabled;
 }
 
-export function toolDebugLog(message: string, data?: any): void {
+export function toolDebugLog(message: string, data?: unknown): void {
 	if (!debugEnabled) return;
 
 	const timestamp = new Date().toISOString();
@@ -97,7 +97,7 @@ export function formatToolParams(
  */
 export function createToolResponse(
 	success: boolean,
-	data?: any,
+	data?: unknown,
 	message: string = '',
 	error: string = '',
 ): ToolResult {
@@ -195,7 +195,7 @@ export async function readFile(
 			return createToolResponse(true, content, message);
 		}
 	} catch (error) {
-		if ((error as any).code === 'ENOENT') {
+		if (hasErrorCode(error) && error.code === 'ENOENT') {
 			return createToolResponse(false, undefined, '', 'Error: File not found');
 		}
 		return createToolResponse(
@@ -322,27 +322,32 @@ export async function searchFiles(
 		let searchRegex: RegExp;
 		try {
 			switch (patternType) {
-				case 'exact':
+				case 'exact': {
 					searchRegex = new RegExp(
 						escapeRegex(pattern),
 						caseSensitive ? 'g' : 'gi',
 					);
 					break;
-				case 'regex':
+				}
+				case 'regex': {
 					searchRegex = new RegExp(pattern, caseSensitive ? 'g' : 'gi');
 					break;
-				case 'fuzzy':
+				}
+				case 'fuzzy': {
 					// Simple fuzzy search, insert .* between characters
 					const fuzzyPattern = pattern.split('').map(escapeRegex).join('.*');
 					searchRegex = new RegExp(fuzzyPattern, caseSensitive ? 'g' : 'gi');
 					break;
+				}
 				case 'substring':
 				default:
+				{
 					searchRegex = new RegExp(
 						escapeRegex(pattern),
 						caseSensitive ? 'g' : 'gi',
 					);
 					break;
+				}
 			}
 		} catch (error) {
 			return createToolResponse(
@@ -422,7 +427,7 @@ export async function searchFiles(
 		}
 
 		// Format results
-		let formattedResults: any;
+		let formattedResults: SearchResult[] | SearchMatchFlat[];
 		if (groupByFile) {
 			formattedResults = results;
 		} else {
@@ -466,6 +471,47 @@ interface SearchResult {
 	filePath: string;
 	matches: SearchMatch[];
 	totalMatches: number;
+}
+
+interface SearchMatchFlat {
+	filePath: string;
+	lineNumber: number;
+	lineContent: string;
+	contextLines?: string[];
+	matchPositions: SearchMatch['matchPositions'];
+}
+
+interface ErrorWithCode {
+	code?: string;
+}
+
+function hasErrorCode(error: unknown): error is ErrorWithCode {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'code' in error &&
+		typeof (error as ErrorWithCode).code === 'string'
+	);
+}
+
+interface ProcessFailure {
+	code?: number;
+	signal?: string;
+	stdout?: string;
+	stderr?: string;
+	killed?: boolean;
+}
+
+function hasProcessFailure(error: unknown): error is ProcessFailure {
+	if (typeof error !== 'object' || error === null) return false;
+	const candidate = error as ProcessFailure;
+	return (
+		typeof candidate.code === 'number' ||
+		typeof candidate.signal === 'string' ||
+		typeof candidate.stdout === 'string' ||
+		typeof candidate.stderr === 'string' ||
+		typeof candidate.killed === 'boolean'
+	);
 }
 
 // Helper function to escape regex special characters
@@ -670,19 +716,16 @@ export async function executeCommand(
 				process.chdir(originalCwd);
 			}
 		}
-	} catch (error: any) {
-		const isTimeout = error.killed && error.signal === 'SIGTERM';
-		const stdout =
-			typeof error?.stdout === 'string' ? error.stdout : undefined;
-		const stderr =
-			typeof error?.stderr === 'string' ? error.stderr : undefined;
+	} catch (error) {
+		const isTimeout = hasProcessFailure(error) && error.signal === 'SIGTERM';
+		const stdout = hasProcessFailure(error) ? error.stdout : undefined;
+		const stderr = hasProcessFailure(error) ? error.stderr : undefined;
 		const content =
 			stdout || stderr
 				? `stdout: ${stdout ?? ''}\nstderr: ${stderr ?? ''}`
 				: undefined;
-		const exitCode =
-			typeof error?.code === 'number' ? error.code : undefined;
-		const signal = typeof error?.signal === 'string' ? error.signal : undefined;
+		const exitCode = hasProcessFailure(error) ? error.code : undefined;
+		const signal = hasProcessFailure(error) ? error.signal : undefined;
 		if (isTimeout) {
 			return {
 				success: false,
