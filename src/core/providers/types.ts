@@ -50,8 +50,12 @@ export interface ChatContext {
 	systemMessage: string;
 
 	// コールバック
-	onToolStart?: (name: ToolName, args: ToolArgsByName[ToolName]) => void;
-	onToolEnd?: (name: ToolName, result: ToolResult) => void;
+	onToolStart?: (name: ToolName) => void;
+	onToolEnd?: (
+		name: ToolName,
+		result: ToolResult,
+		args: ToolArgsByName[ToolName],
+	) => void;
 	onToolApproval?: (
 		toolName: ToolName,
 		toolArgs: ToolArgsByName[ToolName],

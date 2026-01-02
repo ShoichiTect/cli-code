@@ -35,6 +35,10 @@ export interface ToolResult {
 	data?: unknown;
 	message?: string;
 	error?: string;
+	stack?: string;
+	exitCode?: number | null;
+	signal?: string | null;
+	timedOut?: boolean;
 	userRejected?: boolean;
 }
 
@@ -659,20 +663,37 @@ export async function executeCommand(
 		}
 	} catch (error: any) {
 		const isTimeout = error.killed && error.signal === 'SIGTERM';
+		const stdout =
+			typeof error?.stdout === 'string' ? error.stdout : undefined;
+		const stderr =
+			typeof error?.stderr === 'string' ? error.stderr : undefined;
+		const content =
+			stdout || stderr
+				? `stdout: ${stdout ?? ''}\nstderr: ${stderr ?? ''}`
+				: undefined;
+		const exitCode =
+			typeof error?.code === 'number' ? error.code : undefined;
+		const signal = typeof error?.signal === 'string' ? error.signal : undefined;
 		if (isTimeout) {
-			return createToolResponse(
-				false,
-				undefined,
-				'',
-				'Error: Command timed out',
-			);
+			return {
+				success: false,
+				content,
+				error: 'Error: Command timed out',
+				stack: error instanceof Error ? error.stack : undefined,
+				exitCode,
+				signal,
+				timedOut: true,
+			};
 		}
-		return createToolResponse(
-			false,
-			undefined,
-			'',
-			'Error: Failed to execute command',
-		);
+		return {
+			success: false,
+			content,
+			error: 'Error: Failed to execute command',
+			stack: error instanceof Error ? error.stack : undefined,
+			exitCode,
+			signal,
+			timedOut: false,
+		};
 	}
 }
 
@@ -776,9 +797,10 @@ export async function executeTool(
 			message: String(error),
 		});
 
-		if (error instanceof TypeError) {
-			return createToolResponse(false, undefined, '', 'Error: ' + errorMsg);
-		}
-		return createToolResponse(false, undefined, '', 'Error: ' + errorMsg);
+		return {
+			success: false,
+			error: 'Error: ' + errorMsg,
+			stack: error instanceof Error ? error.stack : undefined,
+		};
 	}
 }

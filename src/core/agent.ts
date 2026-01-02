@@ -45,8 +45,12 @@ export class Agent {
 	private systemMessage: string;
 	private configManager: ConfigManager;
 	private proxyOverride?: string;
-	private onToolStart?: (name: ToolName, args: ToolArgsByName[ToolName]) => void;
-	private onToolEnd?: (name: ToolName, result: ToolResult) => void;
+	private onToolStart?: (name: ToolName) => void;
+	private onToolEnd?: (
+		name: ToolName,
+		result: ToolResult,
+		args: ToolArgsByName[ToolName],
+	) => void;
 	private onToolApproval?: (
 		toolName: ToolName,
 		toolArgs: ToolArgsByName[ToolName],
@@ -225,8 +229,12 @@ export class Agent {
 	}
 
 	public setToolCallbacks(callbacks: {
-		onToolStart?: (name: ToolName, args: ToolArgsByName[ToolName]) => void;
-		onToolEnd?: (name: ToolName, result: ToolResult) => void;
+		onToolStart?: (name: ToolName) => void;
+		onToolEnd?: (
+			name: ToolName,
+			result: ToolResult,
+			args: ToolArgsByName[ToolName],
+		) => void;
 		onToolApproval?: (
 			toolName: ToolName,
 			toolArgs: ToolArgsByName[ToolName],
@@ -716,6 +724,7 @@ export class Agent {
 		void ctx;
 		// Initialize toolName outside try block so it's accessible in catch
 		let toolName = 'unknown';
+		let toolArgs: ToolArgsByName[ToolName] | undefined;
 		try {
 			// Strip 'repo_browser.' prefix if present (some models hallucinate this)
 			toolName = toolCall.function.name;
@@ -724,7 +733,6 @@ export class Agent {
 			}
 
 			// Handle truncated tool calls
-			let toolArgs: ToolArgsByName[ToolName];
 			try {
 				const parsedArgs = JSON.parse(
 					toolCall.function.arguments,
@@ -762,7 +770,7 @@ export class Agent {
 
 			// Notify UI about tool start
 			if (this.onToolStart) {
-				this.onToolStart(toolName, toolArgs);
+				this.onToolStart(toolName);
 			}
 
 			// Check if tool needs approval (only after validation passes)
@@ -786,7 +794,7 @@ export class Agent {
 							userRejected: true,
 						};
 						if (this.onToolEnd) {
-							this.onToolEnd(toolName, result);
+							this.onToolEnd(toolName, result, toolArgs!);
 						}
 						return result;
 					}
@@ -801,7 +809,7 @@ export class Agent {
 							userRejected: true,
 						};
 						if (this.onToolEnd) {
-							this.onToolEnd(toolName, result);
+							this.onToolEnd(toolName, result, toolArgs!);
 						}
 						return result;
 					}
@@ -826,7 +834,7 @@ export class Agent {
 						userRejected: true,
 					};
 					if (this.onToolEnd) {
-						this.onToolEnd(toolName, result);
+						this.onToolEnd(toolName, result, toolArgs!);
 					}
 					return result;
 				}
@@ -855,7 +863,7 @@ export class Agent {
 
 			// Notify UI about tool completion
 			if (this.onToolEnd) {
-				this.onToolEnd(toolName, result);
+				this.onToolEnd(toolName, result, toolArgs!);
 			}
 
 			return result as unknown as Record<string, unknown> & {

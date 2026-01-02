@@ -15,7 +15,7 @@ import {
 import {parseMarkdown, parseInlineElements} from '../utils/markdown.js';
 import {DANGEROUS_TOOLS} from '../tools/tool-schemas.js';
 import {type ToolName, type ToolArgsByName} from '../tools/tool-types.js';
-import {type ToolResult} from '../tools/tools.js';
+import {formatToolParams, type ToolResult} from '../tools/tools.js';
 import {learn} from '../utils/learn-log.js';
 
 // Model definitions for each provider
@@ -115,13 +115,17 @@ export class SimpleCLI {
 				console.log(this.formatMarkdown(displayed));
 			},
 
-			onToolStart: (name: ToolName, _args: ToolArgsByName[ToolName]) => {
+			onToolStart: (name) => {
 				this.spinner?.stop();
 				console.log(chalk.blue(`\n ${name}...`));
 			},
 
-			onToolEnd: (name: ToolName, result: ToolResult) => {
-				this.printToolResult(name, result);
+			onToolEnd: (
+				name: ToolName,
+				result: ToolResult,
+				toolArgs: ToolArgsByName[ToolName],
+			) => {
+				this.printToolResult(name, result, toolArgs);
 			},
 
 			onToolApproval: async (
@@ -193,12 +197,52 @@ export class SimpleCLI {
 	/**
 	 * Print tool result with appropriate formatting
 	 */
-	private printToolResult(name: ToolName, result: ToolResult): void {
+	private printToolResult(
+		name: ToolName,
+		result: ToolResult,
+		toolArgs?: ToolArgsByName[ToolName],
+	): void {
 		if (!result.success) {
 			if (result.userRejected) {
 				console.log(chalk.yellow(` ${name} rejected by user`));
 			} else {
 				console.log(chalk.red(` ${name} failed: ${result.error}`));
+				const formattedArgs = this.formatToolArgs(name, toolArgs);
+				if (formattedArgs) {
+					console.log(chalk.dim(` ${formattedArgs}`));
+				}
+				const stdout = this.extractStdout(result.content);
+				const stderr = this.extractStderr(result.content);
+				const isCommandFailure =
+					name === 'execute_command' &&
+					(typeof result.exitCode === 'number' ||
+						typeof result.signal === 'string' ||
+						typeof result.timedOut === 'boolean' ||
+						!!stdout ||
+						!!stderr);
+
+				if (isCommandFailure) {
+					if (stdout) {
+						console.log(
+							chalk.white(` stdout: ${this.truncateOutput(stdout, 400)}`),
+						);
+					}
+					if (stderr) {
+						console.log(
+							chalk.yellow(` stderr: ${this.truncateOutput(stderr, 400)}`),
+						);
+					}
+					const meta = this.formatCommandFailureMeta(result);
+					if (meta) {
+						console.log(chalk.dim(` ${meta}`));
+					}
+				}
+				if (!isCommandFailure) {
+					const stackTrace = this.formatStackTrace(result.stack, true);
+					if (stackTrace) {
+						console.log(chalk.dim(stackTrace));
+					}
+				}
 			}
 			return;
 		}
@@ -230,6 +274,103 @@ export class SimpleCLI {
 					console.log(chalk.dim(result.message));
 				}
 		}
+	}
+
+	private formatToolArgs(
+		name: ToolName,
+		toolArgs?: ToolArgsByName[ToolName],
+	): string | null {
+		if (!toolArgs) return null;
+		const formatted = formatToolParams(
+			name,
+			toolArgs as Record<string, unknown>,
+		);
+		return formatted ? formatted : null;
+	}
+
+	private formatStackTrace(stack?: string, stripMessage = false): string | null {
+		if (!stack) return null;
+		let cleaned = stack;
+		if (stripMessage) {
+			const atIndex = stack.indexOf('\n    at');
+			if (atIndex !== -1) {
+				cleaned = stack.slice(atIndex + 1).trimStart();
+			}
+		}
+		return this.truncateOutput(cleaned, 450);
+	}
+
+	private truncateOutput(text: string, maxChars: number): string {
+		if (text.length <= maxChars) return text;
+		return text.slice(0, maxChars).trimEnd() + '...';
+	}
+
+	private extractStderr(content: unknown): string | null {
+		if (typeof content !== 'string') return null;
+
+		const lines = content.split('\n');
+		let section = '';
+		const stderrLines: string[] = [];
+
+		for (const line of lines) {
+			if (line.startsWith('stdout:')) {
+				section = 'stdout';
+				continue;
+			}
+			if (line.startsWith('stderr:')) {
+				section = 'stderr';
+				const text = line.slice(7).trim();
+				if (text) stderrLines.push(text);
+				continue;
+			}
+			if (section === 'stderr') {
+				stderrLines.push(line);
+			}
+		}
+
+		if (stderrLines.length === 0) return null;
+		return stderrLines.join('\n').trim();
+	}
+
+	private extractStdout(content: unknown): string | null {
+		if (typeof content !== 'string') return null;
+
+		const lines = content.split('\n');
+		let section = '';
+		const stdoutLines: string[] = [];
+
+		for (const line of lines) {
+			if (line.startsWith('stdout:')) {
+				section = 'stdout';
+				const text = line.slice(7).trim();
+				if (text) stdoutLines.push(text);
+				continue;
+			}
+			if (line.startsWith('stderr:')) {
+				section = 'stderr';
+				continue;
+			}
+			if (section === 'stdout') {
+				stdoutLines.push(line);
+			}
+		}
+
+		if (stdoutLines.length === 0) return null;
+		return stdoutLines.join('\n').trim();
+	}
+
+	private formatCommandFailureMeta(result: ToolResult): string | null {
+		const parts: string[] = [];
+		if (typeof result.exitCode === 'number') {
+			parts.push(`exit code=${result.exitCode}`);
+		}
+		if (typeof result.signal === 'string') {
+			parts.push(`signal=${result.signal}`);
+		}
+		if (typeof result.timedOut === 'boolean') {
+			parts.push(`timed out=${result.timedOut ? 'yes' : 'no'}`);
+		}
+		return parts.length > 0 ? `(${parts.join(', ')})` : null;
 	}
 
 	/**
@@ -279,7 +420,7 @@ export class SimpleCLI {
 						) + '\n';
 					break;
 
-				case 'mixed-line':
+				case 'mixed-line': {
 					const inlineElements = parseInlineElements(element.content);
 					for (const inline of inlineElements) {
 						switch (inline.type) {
@@ -298,6 +439,7 @@ export class SimpleCLI {
 					}
 					output += '\n';
 					break;
+				}
 
 				default:
 					output += element.content + '\n';
@@ -345,7 +487,7 @@ export class SimpleCLI {
 				resolve(buffer);
 			};
 
-			const onKey = (str: string, key: any) => {
+			const onKey = (str: string, key: readline.Key) => {
 				const now = Date.now();
 				const timeSinceLastKey = now - lastKeyTime;
 				lastKeyTime = now;
@@ -412,7 +554,7 @@ export class SimpleCLI {
 		// [学習用ログ] ループカウンター
 		let loopCount = 0;
 
-		while (true) {
+		for (;;) {
 			loopCount++;
 			// [学習用ログ] ループ開始
 			learn.divider(`ループ ${loopCount} 回目`);
@@ -500,7 +642,7 @@ export class SimpleCLI {
 				this.showHelp();
 				break;
 
-			case 'prompt':
+			case 'prompt': {
 				// Usage: /prompt <name>
 				// Loads prompt from ~/.config/cli-code/prompts/<name>.txt
 				const promptName = parts[1];
@@ -538,6 +680,7 @@ export class SimpleCLI {
 					this.isProcessing = false;
 				}
 				break;
+			}
 
 			default:
 				console.log(chalk.yellow(`Unknown command: /${command}`));
