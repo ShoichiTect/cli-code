@@ -3,7 +3,10 @@ import * as path from 'path';
 import {exec} from 'child_process';
 import {promisify} from 'util';
 import {displayTree} from '../utils/file-ops.js';
-import {validateFileOperation} from './security-filter.js';
+import {
+	validateCommandOperation,
+	validateFileOperation,
+} from './security-filter.js';
 
 const execAsync = promisify(exec);
 
@@ -610,6 +613,11 @@ export async function executeCommand(
 	timeout: number = 30000,
 ): Promise<ToolResult> {
 	try {
+		const validation = validateCommandOperation(command);
+		if (!validation.allowed) {
+			return createToolResponse(false, undefined, '', validation.reason);
+		}
+
 		// Validate command type
 		if (!['bash', 'python', 'setup', 'run'].includes(commandType)) {
 			return createToolResponse(

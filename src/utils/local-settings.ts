@@ -9,6 +9,8 @@ interface Config {
 	provider?: 'groq' | 'anthropic' | 'gemini';
 	anthropicApiKey?: string;
 	geminiApiKey?: string;
+	dangerousDirectories?: string[];
+	dangerousFiles?: string[];
 }
 
 const CONFIG_DIR = '.groq'; // In home directory
@@ -44,6 +46,17 @@ export class ConfigManager {
 			console.warn('Failed to read config file:', error);
 			return {};
 		}
+	}
+
+	private sanitizeStringArray(value: unknown): string[] | null {
+		if (!Array.isArray(value)) {
+			return null;
+		}
+		const items = value
+			.filter(item => typeof item === 'string')
+			.map(item => item.trim())
+			.filter(item => item.length > 0);
+		return items.length > 0 ? items : null;
 	}
 
 	private writeConfig(config: Config): void {
@@ -276,5 +289,15 @@ export class ConfigManager {
 		} catch (error) {
 			console.warn('Failed to clear Gemini API key:', error);
 		}
+	}
+
+	public getDangerousDirectories(): string[] | null {
+		const config = this.readConfig();
+		return this.sanitizeStringArray(config.dangerousDirectories);
+	}
+
+	public getDangerousFiles(): string[] | null {
+		const config = this.readConfig();
+		return this.sanitizeStringArray(config.dangerousFiles);
 	}
 }
