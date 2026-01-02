@@ -31,10 +31,11 @@ export function toolDebugLog(message: string, data?: any): void {
 
 export interface ToolResult {
 	success: boolean;
-	content?: any;
-	data?: any;
+	content?: unknown;
+	data?: unknown;
 	message?: string;
 	error?: string;
+	userRejected?: boolean;
 }
 
 /**

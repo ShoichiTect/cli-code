@@ -14,6 +14,8 @@ import {
 } from './cli-utils.js';
 import {parseMarkdown, parseInlineElements} from '../utils/markdown.js';
 import {DANGEROUS_TOOLS} from '../tools/tool-schemas.js';
+import {type ToolName, type ToolArgsByName} from '../tools/tool-types.js';
+import {type ToolResult} from '../tools/tools.js';
 import {learn} from '../utils/learn-log.js';
 
 // Model definitions for each provider
@@ -57,7 +59,6 @@ export class SimpleCLI {
 		requestCount: 0,
 	};
 	private spinner: Spinner | null = null;
-	private lastToolArgs: Record<string, any> | null = null;
 
 	constructor(agent: Agent) {
 		this.agent = agent;
@@ -114,19 +115,18 @@ export class SimpleCLI {
 				console.log(this.formatMarkdown(displayed));
 			},
 
-			onToolStart: (name: string, args: Record<string, any>) => {
+			onToolStart: (name: ToolName, _args: ToolArgsByName[ToolName]) => {
 				this.spinner?.stop();
 				console.log(chalk.blue(`\n ${name}...`));
-				this.lastToolArgs = args;
 			},
 
-			onToolEnd: (name: string, result: any) => {
+			onToolEnd: (name: ToolName, result: ToolResult) => {
 				this.printToolResult(name, result);
 			},
 
 			onToolApproval: async (
-				toolName: string,
-				toolArgs: Record<string, any>,
+				toolName: ToolName,
+				toolArgs: ToolArgsByName[ToolName],
 			) => {
 				this.spinner?.stop();
 				return this.handleToolApproval(toolName, toolArgs);
@@ -160,8 +160,8 @@ export class SimpleCLI {
 	 * Handle tool approval flow with danger level distinction
 	 */
 	private async handleToolApproval(
-		toolName: string,
-		toolArgs: Record<string, any>,
+		toolName: ToolName,
+		toolArgs: ToolArgsByName[ToolName],
 	): Promise<{approved: boolean; autoApproveSession?: boolean}> {
 		const isDangerous = DANGEROUS_TOOLS.includes(toolName);
 
@@ -193,7 +193,7 @@ export class SimpleCLI {
 	/**
 	 * Print tool result with appropriate formatting
 	 */
-	private printToolResult(name: string, result: any): void {
+	private printToolResult(name: ToolName, result: ToolResult): void {
 		if (!result.success) {
 			if (result.userRejected) {
 				console.log(chalk.yellow(` ${name} rejected by user`));
@@ -235,7 +235,7 @@ export class SimpleCLI {
 	/**
 	 * Print command output with stdout/stderr separation
 	 */
-	private printCommandOutput(result: any): void {
+	private printCommandOutput(result: ToolResult): void {
 		const content = result.content;
 		if (typeof content !== 'string') return;
 
@@ -256,32 +256,6 @@ export class SimpleCLI {
 			} else if (section === 'stderr') {
 				console.log(chalk.yellow(line));
 			}
-		}
-	}
-
-	/**
-	 * Print tasks with status icons
-	 */
-	private printTasks(tasks: any[]): void {
-		for (const task of tasks) {
-			let icon: string;
-			let color: typeof chalk;
-
-			switch (task.status) {
-				case 'completed':
-					icon = '';
-					color = chalk.green;
-					break;
-				case 'in_progress':
-					icon = '';
-					color = chalk.blue;
-					break;
-				default:
-					icon = '';
-					color = chalk.white;
-			}
-
-			console.log(color(`${icon} ${task.description}`));
 		}
 	}
 
