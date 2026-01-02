@@ -3,6 +3,18 @@
  * These define the available tools that the LLM can call.
  */
 
+export type JsonSchema = {
+	type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
+	description?: string;
+	enum?: string[];
+	items?: JsonSchema;
+	properties?: Record<string, JsonSchema>;
+	required?: string[];
+	minimum?: number;
+	maximum?: number;
+	default?: unknown;
+};
+
 export interface ToolSchema {
 	type: 'function';
 	function: {
@@ -10,7 +22,7 @@ export interface ToolSchema {
 		description: string;
 		parameters: {
 			type: 'object';
-			properties: Record<string, unknown>;
+			properties: Record<string, JsonSchema>;
 			required: string[];
 		};
 	};

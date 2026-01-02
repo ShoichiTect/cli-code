@@ -1,4 +1,6 @@
-import type {ToolSchema} from '../tools/tool-schemas.js';
+import {Type} from '@google/genai';
+import type {FunctionDeclaration, Schema} from '@google/genai';
+import type {ToolSchema, JsonSchema} from '../tools/tool-schemas.js';
 
 /**
  * Groq (OpenAI形式) のツールスキーマを Anthropic 形式に変換
@@ -28,7 +30,19 @@ import type {ToolSchema} from '../tools/tool-schemas.js';
  *   }
  * }
  */
-export function convertToolSchemaForAnthropic(groqSchema: ToolSchema): any {
+type AnthropicToolSchema = {
+	name: string;
+	description: string;
+	input_schema: {
+		type: 'object';
+		properties: Record<string, JsonSchema>;
+		required?: string[];
+	};
+};
+
+export function convertToolSchemaForAnthropic(
+	groqSchema: ToolSchema,
+): AnthropicToolSchema {
 	return {
 		name: groqSchema.function.name,
 		description: groqSchema.function.description,
@@ -45,7 +59,7 @@ export function convertToolSchemaForAnthropic(groqSchema: ToolSchema): any {
  */
 export function convertAllToolSchemasForAnthropic(
 	groqSchemas: ToolSchema[],
-): any[] {
+): AnthropicToolSchema[] {
 	return groqSchemas.map(convertToolSchemaForAnthropic);
 }
 
@@ -63,20 +77,20 @@ export function convertAllToolSchemasForAnthropic(
  *   }
  * }
  */
-function convertTypeToGemini(type: string): string {
-	const typeMap: Record<string, string> = {
-		string: 'STRING',
-		number: 'NUMBER',
-		integer: 'INTEGER',
-		boolean: 'BOOLEAN',
-		array: 'ARRAY',
-		object: 'OBJECT',
+function convertTypeToGemini(type: string): Type {
+	const typeMap: Record<string, Type> = {
+		string: Type.STRING,
+		number: Type.NUMBER,
+		integer: Type.INTEGER,
+		boolean: Type.BOOLEAN,
+		array: Type.ARRAY,
+		object: Type.OBJECT,
 	};
-	return typeMap[type] || 'STRING';
+	return typeMap[type] || Type.STRING;
 }
 
-function convertPropertyForGemini(prop: any): any {
-	const converted: any = {
+function convertPropertyForGemini(prop: JsonSchema): Schema {
+	const converted: Schema = {
 		type: convertTypeToGemini(prop.type),
 		description: prop.description,
 	};
@@ -102,8 +116,10 @@ function convertPropertyForGemini(prop: any): any {
 	return converted;
 }
 
-export function convertToolSchemaForGemini(groqSchema: ToolSchema): any {
-	const properties: Record<string, any> = {};
+export function convertToolSchemaForGemini(
+	groqSchema: ToolSchema,
+): FunctionDeclaration {
+	const properties: Record<string, Schema> = {};
 
 	for (const [key, value] of Object.entries(
 		groqSchema.function.parameters.properties,
@@ -115,7 +131,7 @@ export function convertToolSchemaForGemini(groqSchema: ToolSchema): any {
 		name: groqSchema.function.name,
 		description: groqSchema.function.description,
 		parameters: {
-			type: 'OBJECT',
+			type: Type.OBJECT,
 			properties,
 			required: groqSchema.function.parameters.required,
 		},
@@ -127,6 +143,6 @@ export function convertToolSchemaForGemini(groqSchema: ToolSchema): any {
  */
 export function convertAllToolSchemasForGemini(
 	groqSchemas: ToolSchema[],
-): any[] {
+): FunctionDeclaration[] {
 	return groqSchemas.map(convertToolSchemaForGemini);
 }
