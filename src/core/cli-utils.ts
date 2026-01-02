@@ -35,7 +35,7 @@ export async function selectWithNumbers(
 			});
 			console.log('Press the number of your choice (or Ctrl+C to cancel)');
 
-			const onKey = (str: string, key: any) => {
+			const onKey = (str: string, key: readline.Key) => {
 				// Handle Ctrl+C (select second option if available)
 				if (key.sequence === '\x03') {
 					cleanup();
@@ -196,4 +196,3 @@ export function formatElapsedTime(ms: number): string {
 	const remainingSeconds = Math.floor(seconds % 60);
 	return `${minutes}m ${remainingSeconds}s`;
 }
-

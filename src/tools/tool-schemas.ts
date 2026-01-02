@@ -10,7 +10,7 @@ export interface ToolSchema {
 		description: string;
 		parameters: {
 			type: 'object';
-			properties: Record<string, any>;
+			properties: Record<string, unknown>;
 			required: string[];
 		};
 	};
