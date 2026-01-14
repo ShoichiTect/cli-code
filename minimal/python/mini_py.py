@@ -9,7 +9,7 @@ try:
     from groq import Groq
 except ModuleNotFoundError:
     print(
-        "Missing dependency: groq. Install with `uv tool install .` or `pip install -r requirements.txt`.",
+        "Missing dependency: groq. Install with `uv tool install .`.",
         file=sys.stderr,
     )
     sys.exit(1)
