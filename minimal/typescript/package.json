@@ -1,11 +1,15 @@
 {
-  "name": "cli-code-minimal",
+  "name": "mini-ts",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",
+    "postbuild": "node scripts/add-shebang.mjs",
     "start": "node dist/index.js"
+  },
+  "bin": {
+    "mini-ts": "dist/index.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

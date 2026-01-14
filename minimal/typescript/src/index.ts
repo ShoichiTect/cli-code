@@ -1,5 +1,11 @@
+#!/usr/bin/env node
 import 'dotenv/config';
 import Groq from 'groq-sdk';
+import type {
+	ChatCompletionMessageParam,
+	ChatCompletionMessageToolCall,
+	ChatCompletionTool,
+} from 'groq-sdk/resources/chat/completions';
 import {spawn} from 'node:child_process';
 import readline from 'node:readline/promises';
 import {stdin as input, stdout as output} from 'node:process';
@@ -23,7 +29,7 @@ let approvalAbort: AbortController | null = null;
 
 const systemMessage = `You are a helpful coding assistant.\n\nWhen you need to run a shell command, you must call the bash tool. Do not emit COMMAND: lines. Wait for user approval before running anything.`;
 
-const messages = [
+const messages: ChatCompletionMessageParam[] = [
 	{
 		role: 'system',
 		content: systemMessage,
@@ -93,7 +99,7 @@ async function promptApproval(): Promise<boolean> {
 	}
 }
 
-const tools = [
+const tools: ChatCompletionTool[] = [
 	{
 		type: 'function',
 		function: {
@@ -135,10 +141,16 @@ while (true) {
 
 			const assistant = response.choices?.[0]?.message;
 			const content = assistant?.content ?? '';
-			const toolCalls = assistant?.tool_calls ?? [];
+			const toolCalls: ChatCompletionMessageToolCall[] =
+				assistant?.tool_calls ?? [];
+
+			messages.push({
+				role: 'assistant',
+				content: content || '',
+				tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+			});
 
 			if (content) {
-				messages.push({role: 'assistant', content});
 				console.log(content);
 			}
 
@@ -146,12 +158,6 @@ while (true) {
 				shouldContinue = false;
 				break;
 			}
-
-			messages.push({
-				role: 'assistant',
-				content: content || '',
-				tool_calls: toolCalls,
-			});
 
 			for (const call of toolCalls) {
 				console.log('\n====={ tool execution }=====\n');
