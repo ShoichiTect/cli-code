@@ -1,0 +1,8 @@
+{
+  "name": "mini-py",
+  "private": true,
+  "version": "0.1.0",
+  "bin": {
+    "mini-py": "mini_py.py"
+  }
+}
