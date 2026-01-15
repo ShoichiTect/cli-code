@@ -113,7 +113,20 @@ function loadSkill(name: string): string | null {
 // Main
 // ============================================
 
-export async function main() {
+export interface MainOptions {
+  debug?: boolean;
+}
+
+export async function main(options: MainOptions = {}) {
+  const { debug = false } = options;
+
+  function debugLog(label: string, data?: unknown) {
+    if (!debug) return;
+    console.log(chalk.magenta(`[DEBUG] ${label}`));
+    if (data !== undefined) {
+      console.log(chalk.magenta(JSON.stringify(data, null, 2)));
+    }
+  }
   // Setup
   ensureMinimalDir();
   const config = loadConfig();
@@ -161,6 +174,9 @@ export async function main() {
   ];
 
   console.log(chalk.bold("Minimal Agent") + chalk.gray(` (${config.llm.model})`));
+  if (debug) {
+    console.log(chalk.magenta("[DEBUG MODE ENABLED]"));
+  }
   console.log(chalk.gray("Type /help for commands, /exit to quit."));
   console.log("");
 
@@ -292,9 +308,19 @@ export async function main() {
 
       let command = "";
       try {
+        debugLog("Parsing tool_call arguments", {
+          raw: call.function.arguments,
+          functionName: call.function.name,
+          callId: call.id,
+        });
         const args = JSON.parse(call.function.arguments || "{}") as { command?: string };
         command = args.command || "";
-      } catch {
+        debugLog("Parsed command", { command });
+      } catch (parseError) {
+        debugLog("JSON parse error", {
+          error: parseError instanceof Error ? parseError.message : String(parseError),
+          raw: call.function.arguments,
+        });
         command = "";
       }
 
@@ -323,14 +349,17 @@ export async function main() {
 
       let response;
       try {
-        response = await provider.createChatCompletion({
+        const requestParams = {
           model: config.llm.model,
           temperature: config.llm.temperature,
           max_tokens: config.llm.maxTokens,
           messages,
           tools,
-          tool_choice: "auto",
-        });
+          tool_choice: "auto" as const,
+        };
+        debugLog("API Request", requestParams);
+        response = await provider.createChatCompletion(requestParams);
+        debugLog("API Response", response);
       } catch (e: unknown) {
         const err = e as { status?: number; code?: string; message?: string };
         if (err.status === 401) {
@@ -361,6 +390,7 @@ export async function main() {
       const assistant = response.choices?.[0]?.message;
       const content = assistant?.content ?? "";
       const toolCalls = assistant?.tool_calls ?? [];
+      debugLog("Assistant message", { content, toolCalls });
 
       messages.push({
         role: "assistant",

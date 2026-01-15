@@ -43,10 +43,18 @@ const BUILTIN_DENY_PATTERNS: RegExp[] = [
   /chown\s+-R.*\//,
   /curl.*\|\s*(ba)?sh/,
   /wget.*\|\s*(ba)?sh/,
+  // Context-bloating commands
+  /ls\s+-[^\s]*R/,
+  /ls\s+-R/,
+  // sed in-place edit
+  /sed\s.*-i/,
 ];
 
 const BUILTIN_AUTO_COMMANDS = [
   "ls",
+  "ls -la",
+  "ls -l",
+  "ls -a",
   "pwd",
   "whoami",
   "date",
@@ -64,6 +72,7 @@ const BUILTIN_AUTO_COMMANDS = [
   "fd",
   "grep",
   "rg",
+  "sed -n",
   "git status",
   "git diff",
   "git log",

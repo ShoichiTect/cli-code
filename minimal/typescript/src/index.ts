@@ -2,4 +2,5 @@
 import "dotenv/config";
 import { main } from "./app.js";
 
-main();
+const debug = process.argv.includes("-d") || process.argv.includes("--debug");
+main({ debug });
