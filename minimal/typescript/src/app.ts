@@ -9,7 +9,7 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
   ChatCompletionTool,
-} from "groq-sdk/resources/chat/completions";
+} from "openai/resources/chat/completions";
 import { ensureMinimalDir, loadConfig, loadSystemPrompt, SKILLS_DIR } from "./config.js";
 import { createProvider } from "./providers.js";
 import { checkPolicy, formatCommandResult, runBash } from "./policy-bash.js";
@@ -272,6 +272,15 @@ export async function main() {
     const results: ChatCompletionMessageParam[] = [];
 
     for (const call of toolCalls) {
+      if (call.type !== "function") {
+        results.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: `Unknown tool type: ${call.type}`,
+        });
+        continue;
+      }
+
       if (call.function?.name !== "bash") {
         results.push({
           role: "tool",

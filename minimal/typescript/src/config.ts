@@ -5,11 +5,12 @@ import chalk from "chalk";
 
 export interface Config {
   llm: {
-    provider: "groq" | "openai";
+    provider: "groq" | "openai" | "custom";
     model: string;
     temperature: number;
     maxTokens: number;
     apiKeyEnv: string;
+    baseUrl?: string;
   };
   policy: {
     defaultAction: "ask" | "deny";
@@ -30,6 +31,7 @@ export const DEFAULT_CONFIG: Config = {
     temperature: 0.7,
     maxTokens: 4096,
     apiKeyEnv: "GROQ_API_KEY",
+    baseUrl: "https://api.groq.com/openai/v1",
   },
   policy: {
     defaultAction: "ask",
@@ -42,6 +44,27 @@ function printError(msg: string) {
   console.error(chalk.red(`Error: ${msg}`));
 }
 
+function getProviderDefaults(provider: Config["llm"]["provider"]): Partial<Config["llm"]> {
+  switch (provider) {
+    case "openai":
+      return {
+        model: "gpt-4o-mini",
+        apiKeyEnv: "OPENAI_API_KEY",
+        baseUrl: "https://api.openai.com/v1",
+      };
+    case "groq":
+      return {
+        model: "moonshotai/kimi-k2-instruct",
+        apiKeyEnv: "GROQ_API_KEY",
+        baseUrl: "https://api.groq.com/openai/v1",
+      };
+    case "custom":
+      return {};
+    default:
+      return {};
+  }
+}
+
 export function loadConfig(): Config {
   if (!existsSync(CONFIG_PATH)) {
     return DEFAULT_CONFIG;
@@ -50,8 +73,15 @@ export function loadConfig(): Config {
   try {
     const raw = readFileSync(CONFIG_PATH, "utf-8");
     const parsed = JSON.parse(raw) as Partial<Config>;
+    const provider = parsed.llm?.provider ?? DEFAULT_CONFIG.llm.provider;
+    const providerDefaults = getProviderDefaults(provider);
     return {
-      llm: { ...DEFAULT_CONFIG.llm, ...parsed.llm },
+      llm: {
+        ...DEFAULT_CONFIG.llm,
+        ...providerDefaults,
+        ...parsed.llm,
+        provider,
+      },
       policy: { ...DEFAULT_CONFIG.policy, ...parsed.policy },
     };
   } catch (e) {

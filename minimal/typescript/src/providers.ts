@@ -1,8 +1,8 @@
-import Groq from "groq-sdk";
+import OpenAI from "openai";
 import type {
   ChatCompletion,
   ChatCompletionCreateParamsNonStreaming,
-} from "groq-sdk/resources/chat/completions";
+} from "openai/resources/chat/completions";
 import type { Config } from "./config.js";
 
 export interface ChatProvider {
@@ -10,20 +10,22 @@ export interface ChatProvider {
 }
 
 export function createProvider(config: Config, apiKey: string): ChatProvider {
-  switch (config.llm.provider) {
-    case "groq": {
-      const client = new Groq({ apiKey });
-      return {
-        createChatCompletion(params: ChatCompletionCreateParamsNonStreaming) {
-          return client.chat.completions.create(params);
-        },
-      };
-    }
-    case "openai":
-      throw new Error("OpenAI provider is not implemented yet.");
-    default: {
-      const provider = (config.llm.provider as string) || "unknown";
-      throw new Error(`Unsupported provider: ${provider}`);
-    }
+  const baseURL =
+    config.llm.baseUrl ||
+    (config.llm.provider === "openai"
+      ? "https://api.openai.com/v1"
+      : config.llm.provider === "groq"
+        ? "https://api.groq.com/openai/v1"
+        : "");
+
+  if (!baseURL) {
+    throw new Error("baseUrl is required for custom providers.");
   }
+
+  const client = new OpenAI({ apiKey, baseURL });
+  return {
+    createChatCompletion(params: ChatCompletionCreateParamsNonStreaming) {
+      return client.chat.completions.create(params);
+    },
+  };
 }
