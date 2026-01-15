@@ -5,20 +5,17 @@ import readline from "node:readline/promises";
 import chalk from "chalk";
 import { marked } from "marked";
 import TerminalRenderer from "marked-terminal";
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionMessageToolCall,
-  ChatCompletionTool,
-} from "openai/resources/chat/completions";
 import {
   ensureMinimalDir,
   loadConfig,
   loadSystemPrompt,
   resolveLlmConfig,
   SKILLS_DIR,
-} from "./config.js";
-import { createProvider } from "./providers.js";
-import { checkPolicy, formatCommandResult, runBash } from "./policy-bash.js";
+} from "../config.js";
+import { createProvider } from "./providers/index.js";
+import { checkPolicy, formatCommandResult, runBash } from "../policy-bash.js";
+import type { CoreMessage, CoreTool, CoreToolCall } from "./types.js";
+import { bashTool } from "../tools/bash.js";
 
 // ============================================
 // UI Helpers
@@ -165,28 +162,14 @@ export async function main(options: MainOptions = {}) {
 
   const rl = readline.createInterface({ input, output });
   let approvalAbort: AbortController | null = null;
+  let pendingUserPreamble: string | null = null;
 
-  const messages: ChatCompletionMessageParam[] = [{ role: "system", content: systemPrompt }];
+  const messages: CoreMessage[] = [{ role: "system", content: systemPrompt }];
 
   // Token usage tracking
   const sessionTokens = { prompt: 0, completion: 0, total: 0 };
 
-  const tools: ChatCompletionTool[] = [
-    {
-      type: "function",
-      function: {
-        name: "bash",
-        description: "Execute a shell command in the workspace.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: { type: "string", description: "Shell command to run." },
-          },
-          required: ["command"],
-        },
-      },
-    },
-  ];
+  const tools: CoreTool[] = [bashTool];
 
   console.log(chalk.bold("Minimal Agent") + chalk.gray(` (${llmConfig.model})`));
   if (debug) {
@@ -240,17 +223,14 @@ export async function main(options: MainOptions = {}) {
     }
   }
 
-  async function handleBashTool(
-    command: string,
-    callId: string
-  ): Promise<ChatCompletionMessageParam> {
+  async function handleBashTool(command: string, callId: string): Promise<CoreMessage> {
     const policy = checkPolicy(command, config);
 
     if (policy === "deny") {
       printDenied(command);
       return {
         role: "tool",
-        tool_call_id: callId,
+        toolCallId: callId,
         content: "Command denied by policy.",
       };
     }
@@ -262,7 +242,7 @@ export async function main(options: MainOptions = {}) {
       if (!approved) {
         return {
           role: "tool",
-          tool_call_id: callId,
+          toolCallId: callId,
           content: "User rejected command.",
         };
       }
@@ -283,7 +263,7 @@ export async function main(options: MainOptions = {}) {
 
     return {
       role: "tool",
-      tool_call_id: callId,
+      toolCallId: callId,
       content: JSON.stringify(
         {
           command,
@@ -297,52 +277,37 @@ export async function main(options: MainOptions = {}) {
     };
   }
 
-  async function handleToolCalls(
-    toolCalls: ChatCompletionMessageToolCall[]
-  ): Promise<ChatCompletionMessageParam[]> {
-    const results: ChatCompletionMessageParam[] = [];
+  async function handleToolCalls(toolCalls: CoreToolCall[]): Promise<CoreMessage[]> {
+    const results: CoreMessage[] = [];
 
     for (const call of toolCalls) {
-      if (call.type !== "function") {
+      if (call.name !== "bash") {
         results.push({
           role: "tool",
-          tool_call_id: call.id,
-          content: `Unknown tool type: ${call.type}`,
-        });
-        continue;
-      }
-
-      if (call.function?.name !== "bash") {
-        results.push({
-          role: "tool",
-          tool_call_id: call.id,
-          content: `Unknown tool: ${call.function?.name}`,
+          toolCallId: call.id,
+          content: `Unknown tool: ${call.name}`,
         });
         continue;
       }
 
       let command = "";
-      try {
-        debugLog("Parsing tool_call arguments", {
-          raw: call.function.arguments,
-          functionName: call.function.name,
-          callId: call.id,
-        });
-        const args = JSON.parse(call.function.arguments || "{}") as { command?: string };
-        command = args.command || "";
-        debugLog("Parsed command", { command });
-      } catch (parseError) {
-        debugLog("JSON parse error", {
-          error: parseError instanceof Error ? parseError.message : String(parseError),
-          raw: call.function.arguments,
-        });
-        command = "";
+      const input = call.input;
+
+      if (typeof input === "string") {
+        try {
+          const parsed = JSON.parse(input) as { command?: string };
+          command = parsed.command || "";
+        } catch {
+          command = input;
+        }
+      } else if (input && typeof input === "object") {
+        command = (input as { command?: string }).command || "";
       }
 
       if (!command) {
         results.push({
           role: "tool",
-          tool_call_id: call.id,
+          toolCallId: call.id,
           content: "No command provided.",
         });
         continue;
@@ -367,10 +332,9 @@ export async function main(options: MainOptions = {}) {
         const requestParams = {
           model: llmConfig.model,
           temperature: llmConfig.temperature,
-          max_tokens: llmConfig.maxTokens,
+          maxTokens: llmConfig.maxTokens,
           messages,
           tools,
-          tool_choice: "auto" as const,
         };
         debugLog("API Request", requestParams);
         response = await provider.createChatCompletion(requestParams);
@@ -392,25 +356,25 @@ export async function main(options: MainOptions = {}) {
       // Token usage
       if (response.usage) {
         const u = response.usage;
-        sessionTokens.prompt += u.prompt_tokens;
-        sessionTokens.completion += u.completion_tokens;
-        sessionTokens.total += u.total_tokens;
+        sessionTokens.prompt += u.promptTokens;
+        sessionTokens.completion += u.completionTokens;
+        sessionTokens.total += u.totalTokens;
         console.log(
           chalk.dim(
-            `[tokens] in:${u.prompt_tokens} out:${u.completion_tokens} | session:${sessionTokens.total}`
+            `[tokens] in:${u.promptTokens} out:${u.completionTokens} | session:${sessionTokens.total}`
           )
         );
       }
 
-      const assistant = response.choices?.[0]?.message;
-      const content = assistant?.content ?? "";
-      const toolCalls = assistant?.tool_calls ?? [];
+      const assistant = response.message;
+      const content = assistant.content ?? "";
+      const toolCalls = assistant.toolCalls ?? [];
       debugLog("Assistant message", { content, toolCalls });
 
       messages.push({
         role: "assistant",
         content: content || "",
-        tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       });
 
       if (content) {
@@ -439,6 +403,7 @@ export async function main(options: MainOptions = {}) {
       case "clear":
       case "new":
         messages.length = 1; // Keep system prompt
+        pendingUserPreamble = null;
         printSuccess("✓ Conversation cleared.");
         return true;
 
@@ -463,7 +428,11 @@ export async function main(options: MainOptions = {}) {
 
         const additional = (await rl.question(chalk.gray("Additional input (optional): "))).trim();
 
-        const userContent = additional ? `${skillContent}\n\n${additional}` : skillContent;
+        const baseContent = additional ? `${skillContent}\n\n${additional}` : skillContent;
+        const userContent = pendingUserPreamble
+          ? `${pendingUserPreamble}\n\n${baseContent}`
+          : baseContent;
+        pendingUserPreamble = null;
 
         messages.push({ role: "user", content: userContent });
 
@@ -512,10 +481,10 @@ export async function main(options: MainOptions = {}) {
         }
       }
 
-      messages.push({
-        role: "user",
-        content: formatCommandResult(command, result),
-      });
+      const formatted = formatCommandResult(command, result);
+      pendingUserPreamble = pendingUserPreamble
+        ? `${pendingUserPreamble}\n\n${formatted}`
+        : formatted;
 
       continue;
     }
@@ -528,7 +497,9 @@ export async function main(options: MainOptions = {}) {
       continue;
     }
 
-    messages.push({ role: "user", content: line });
+    const userContent = pendingUserPreamble ? `${pendingUserPreamble}\n\n${line}` : line;
+    pendingUserPreamble = null;
+    messages.push({ role: "user", content: userContent });
 
     try {
       await runAgentTurn();

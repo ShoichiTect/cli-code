@@ -87,6 +87,9 @@ function defaultBaseUrl(provider: string, schemaType: SchemaType): string | unde
     if (provider === "groq") return "https://api.groq.com/openai/v1";
     if (provider === "deepseek") return "https://api.deepseek.com";
   }
+  if (schemaType === "anthropic") {
+    if (provider === "anthropic") return "https://api.anthropic.com";
+  }
   return undefined;
 }
 
