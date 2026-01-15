@@ -12,10 +12,14 @@
     "mini-ts": "dist/index.js"
   },
   "dependencies": {
+    "chalk": "^5.3.0",
     "dotenv": "^16.4.5",
-    "groq-sdk": "^0.27.0"
+    "groq-sdk": "^0.27.0",
+    "marked": "^12.0.2",
+    "marked-terminal": "^7.2.1"
   },
   "devDependencies": {
+    "@types/marked-terminal": "^6.1.1",
     "@types/node": "^20.11.0",
     "tsx": "^4.19.0",
     "typescript": "^5.3.3"

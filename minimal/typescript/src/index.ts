@@ -7,47 +7,318 @@ import type {
 	ChatCompletionTool,
 } from 'groq-sdk/resources/chat/completions';
 import {spawn} from 'node:child_process';
-import readline from 'node:readline/promises';
-import {stdin as input, stdout as output} from 'node:process';
+import {existsSync, mkdirSync, readFileSync, readdirSync} from 'node:fs';
+import {homedir} from 'node:os';
 import path from 'node:path';
+import {stdin as input, stdout as output} from 'node:process';
+import readline from 'node:readline/promises';
+import chalk from 'chalk';
+import {marked} from 'marked';
+import TerminalRenderer from 'marked-terminal';
 
-const apiKey = process.env.GROQ_API_KEY;
-if (!apiKey) {
-	console.error('GROQ_API_KEY is not set.');
-	process.exit(1);
+// ============================================
+// Types
+// ============================================
+
+interface Config {
+	llm: {
+		provider: 'groq';
+		model: string;
+		temperature: number;
+		maxTokens: number;
+		apiKeyEnv: string;
+	};
+	policy: {
+		defaultAction: 'ask' | 'deny';
+		denyPatterns: string[];
+		autoCommands: string[];
+	};
 }
 
-const model = process.env.GROQ_MODEL || 'moonshotai/kimi-k2-instruct';
-const temperature = Number(process.env.GROQ_TEMPERATURE || '0.7');
-const workspaceRoot = path.resolve(
-	process.env.WORKSPACE_ROOT || process.cwd(),
-);
+type PolicyResult = 'auto' | 'ask' | 'deny';
 
-const groq = new Groq({apiKey});
-const rl = readline.createInterface({input, output});
-let approvalAbort: AbortController | null = null;
+// ============================================
+// Constants
+// ============================================
 
-const systemMessage = createSystemMessage();
+const MINIMAL_DIR = path.join(homedir(), '.minimal');
+const CONFIG_PATH = path.join(MINIMAL_DIR, 'config.json');
+const SYSTEM_MD_PATH = path.join(MINIMAL_DIR, 'system.md');
+const PROMPTS_DIR = path.join(MINIMAL_DIR, 'prompts');
+const BASH_TIMEOUT = 30000;
 
-const messages: ChatCompletionMessageParam[] = [
-	{
-		role: 'system',
-		content: systemMessage,
+const DEFAULT_CONFIG: Config = {
+	llm: {
+		provider: 'groq',
+		model: 'moonshotai/kimi-k2-instruct',
+		temperature: 0.7,
+		maxTokens: 4096,
+		apiKeyEnv: 'GROQ_API_KEY',
 	},
+	policy: {
+		defaultAction: 'ask',
+		denyPatterns: [],
+		autoCommands: [],
+	},
+};
+
+// ============================================
+// Policy Patterns
+// ============================================
+
+const READ_COMMANDS = '(cat|head|tail|less|more)';
+
+const BUILTIN_DENY_PATTERNS: RegExp[] = [
+	// Destructive commands
+	/rm\s+(-[rf]+\s+)*\//,
+	/rm\s+-rf?\s+\*/,
+	/rm\s+-rf?\s+\.\*/,
+	/mkfs/,
+	/dd\s+if=.*of=\/dev/,
+	/>\s*\/dev\/sd/,
+	/gcloud\s+.*delete/,
+	/gcloud\s+.*destroy/,
+	/aws\s+.*delete/,
+	/aws\s+.*terminate/,
+	/kubectl\s+delete/,
+	/:\(\)\s*\{.*\|.*&.*\}/,
+	/chmod\s+-R\s+777\s+\//,
+	/chown\s+-R.*\//,
+	/curl.*\|\s*(ba)?sh/,
+	/wget.*\|\s*(ba)?sh/,
+
+	// Secret file reading
+	new RegExp(`${READ_COMMANDS}\\s+.*\\.env`),
+	new RegExp(`${READ_COMMANDS}\\s+.*\\.dev\\.vars`),
+	new RegExp(`${READ_COMMANDS}\\s+.*credentials`, 'i'),
+	new RegExp(`${READ_COMMANDS}\\s+.*secret`, 'i'),
+	new RegExp(`${READ_COMMANDS}\\s+.*\\.pem`),
+	new RegExp(`${READ_COMMANDS}\\s+.*\\.key`),
+	new RegExp(`${READ_COMMANDS}\\s+.*id_rsa`),
+	new RegExp(`${READ_COMMANDS}\\s+.*id_ed25519`),
+
+	// Large file reading
+	new RegExp(`${READ_COMMANDS}\\s+.*package-lock\\.json`),
+	new RegExp(`${READ_COMMANDS}\\s+.*yarn\\.lock`),
+	new RegExp(`${READ_COMMANDS}\\s+.*pnpm-lock\\.yaml`),
+	new RegExp(`${READ_COMMANDS}\\s+.*\\.DS_Store`),
+	new RegExp(`${READ_COMMANDS}\\s+.*node_modules`),
 ];
 
-console.log('Minimal Groq CLI. Type /exit to quit.');
+const BUILTIN_AUTO_COMMANDS = [
+	'ls',
+	'pwd',
+	'whoami',
+	'date',
+	'which',
+	'head',
+	'tail',
+	'wc',
+	'file',
+	'stat',
+	'tree',
+	'find',
+	'fd',
+	'grep',
+	'rg',
+	'git status',
+	'git diff',
+	'git log',
+	'git branch',
+];
 
-rl.on('SIGINT', () => {
-	if (approvalAbort) {
-		approvalAbort.abort();
-		return;
-	}
-	rl.close();
-	process.exit(0);
+const FORCE_ASK_PATTERN = /[|;&`$()]/;
+
+// ============================================
+// UI Helpers
+// ============================================
+
+marked.setOptions({
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	renderer: new TerminalRenderer({
+		reflowText: true,
+		width: 80,
+	}) as any,
 });
 
-function runBash(command: string): Promise<{stdout: string; stderr: string; code: number}> {
+function printError(msg: string) {
+	console.error(chalk.red(`Error: ${msg}`));
+}
+
+function printInfo(msg: string) {
+	console.log(chalk.cyan(msg));
+}
+
+function printSuccess(msg: string) {
+	console.log(chalk.green(msg));
+}
+
+function printMuted(msg: string) {
+	console.log(chalk.gray(msg));
+}
+
+function printMarkdown(content: string) {
+	console.log(marked(content));
+}
+
+function printHelp() {
+	console.log('');
+	console.log(chalk.bold('Commands:'));
+	console.log(
+		chalk.cyan('  /prompt <name>') + chalk.gray('  Load prompt from ~/.minimal/prompts/'),
+	);
+	console.log(chalk.cyan('  /clear') + chalk.gray('         Reset conversation'));
+	console.log(chalk.cyan('  /help') + chalk.gray('          Show this help'));
+	console.log(chalk.cyan('  /exit') + chalk.gray('          Exit'));
+	console.log('');
+}
+
+function printPromptList(prompts: string[]) {
+	console.log('');
+	console.log(chalk.bold('Available prompts:'));
+	if (prompts.length === 0) {
+		console.log(chalk.gray('  (none)'));
+	} else {
+		prompts.forEach((p, i) => {
+			console.log(chalk.cyan(`  ${i + 1}.`) + ` ${p}`);
+		});
+	}
+	console.log(chalk.gray('\nUsage: /prompt <name>'));
+	console.log('');
+}
+
+function printPromptLoaded(name: string, content: string) {
+	console.log(chalk.green(`✓ Loaded: ${name}`));
+	console.log(chalk.gray('─'.repeat(40)));
+	const preview = content.slice(0, 200) + (content.length > 200 ? '...' : '');
+	console.log(chalk.gray(preview));
+	console.log(chalk.gray('─'.repeat(40)));
+}
+
+function printDenied(command: string) {
+	console.log('');
+	console.log(chalk.red.bold('✗ Denied by policy:'));
+	console.log(chalk.gray(`  ${command}`));
+	console.log('');
+}
+
+function printAutoApproved(command: string) {
+	console.log(chalk.green(`✓ ${command}`));
+}
+
+// ============================================
+// Config & Setup
+// ============================================
+
+function loadConfig(): Config {
+	if (!existsSync(CONFIG_PATH)) {
+		return DEFAULT_CONFIG;
+	}
+
+	try {
+		const raw = readFileSync(CONFIG_PATH, 'utf-8');
+		const parsed = JSON.parse(raw) as Partial<Config>;
+		return {
+			llm: {...DEFAULT_CONFIG.llm, ...parsed.llm},
+			policy: {...DEFAULT_CONFIG.policy, ...parsed.policy},
+		};
+	} catch (e) {
+		printError(`Invalid config.json: ${e instanceof Error ? e.message : String(e)}`);
+		process.exit(1);
+	}
+}
+
+function loadSystemPrompt(): string {
+	if (!existsSync(SYSTEM_MD_PATH)) {
+		printError('~/.minimal/system.md not found.');
+		console.error(chalk.gray('Run: mkdir -p ~/.minimal && touch ~/.minimal/system.md'));
+		process.exit(1);
+	}
+
+	const content = readFileSync(SYSTEM_MD_PATH, 'utf-8').trim();
+	if (!content) {
+		printError('~/.minimal/system.md is empty.');
+		process.exit(1);
+	}
+
+	return content;
+}
+
+function listPrompts(): string[] {
+	if (!existsSync(PROMPTS_DIR)) {
+		return [];
+	}
+
+	return readdirSync(PROMPTS_DIR)
+		.filter(f => f.endsWith('.md'))
+		.map(f => f.replace(/\.md$/, ''));
+}
+
+function loadPrompt(name: string): string | null {
+	const promptPath = path.join(PROMPTS_DIR, `${name}.md`);
+	if (!existsSync(promptPath)) {
+		return null;
+	}
+	return readFileSync(promptPath, 'utf-8');
+}
+
+function ensureMinimalDir() {
+	if (!existsSync(MINIMAL_DIR)) {
+		printError('~/.minimal directory not found.');
+		console.error(chalk.gray('Run the following to initialize:'));
+		console.error(chalk.gray('  mkdir -p ~/.minimal/prompts'));
+		console.error(chalk.gray('  echo "You are a helpful coding assistant." > ~/.minimal/system.md'));
+		process.exit(1);
+	}
+}
+
+// ============================================
+// Policy
+// ============================================
+
+function checkPolicy(command: string, config: Config): PolicyResult {
+	const cmd = command.trim();
+
+	// Build deny patterns
+	const denyPatterns = [
+		...BUILTIN_DENY_PATTERNS,
+		...config.policy.denyPatterns.map(p => new RegExp(p)),
+	];
+
+	// Build auto commands
+	const autoCommands = [...BUILTIN_AUTO_COMMANDS, ...config.policy.autoCommands];
+
+	// 1. Check deny
+	for (const pattern of denyPatterns) {
+		if (pattern.test(cmd)) {
+			return 'deny';
+		}
+	}
+
+	// 2. Force ask for complex commands
+	if (FORCE_ASK_PATTERN.test(cmd)) {
+		return 'ask';
+	}
+
+	// 3. Check auto
+	for (const autoCmd of autoCommands) {
+		if (cmd === autoCmd || cmd.startsWith(autoCmd + ' ')) {
+			return 'auto';
+		}
+	}
+
+	// 4. Default action
+	return config.policy.defaultAction;
+}
+
+// ============================================
+// Bash Execution
+// ============================================
+
+function runBash(
+	command: string,
+	workspaceRoot: string,
+): Promise<{stdout: string; stderr: string; code: number}> {
 	return new Promise(resolve => {
 		const child = spawn(command, {
 			shell: true,
@@ -57,6 +328,12 @@ function runBash(command: string): Promise<{stdout: string; stderr: string; code
 
 		let stdout = '';
 		let stderr = '';
+		let timedOut = false;
+
+		const timeout = setTimeout(() => {
+			timedOut = true;
+			child.kill('SIGTERM');
+		}, BASH_TIMEOUT);
 
 		child.stdout.on('data', data => {
 			stdout += String(data);
@@ -65,76 +342,48 @@ function runBash(command: string): Promise<{stdout: string; stderr: string; code
 			stderr += String(data);
 		});
 		child.on('close', code => {
-			resolve({stdout, stderr, code: code ?? 0});
+			clearTimeout(timeout);
+			if (timedOut) {
+				resolve({stdout, stderr: 'Command timed out (30s)', code: 124});
+			} else {
+				resolve({stdout, stderr, code: code ?? 0});
+			}
 		});
 	});
 }
 
-async function promptApproval(): Promise<boolean> {
-	const controller = new AbortController();
-	approvalAbort = controller;
-	try {
-		const answer = (
-			await rl.question('Run? [enter/y to run, n/esc/ctrl+c to reject] ', {
-				signal: controller.signal,
-			})
-		).trim();
-		if (answer === '' || answer.toLowerCase() === 'y') {
-			return true;
-		}
-		if (answer.toLowerCase() === 'n') {
-			return false;
-		}
-		if (answer.startsWith('\u001b')) {
-			return false;
-		}
-		return false;
-	} catch (error) {
-		if (error instanceof Error && error.name === 'AbortError') {
-			return false;
-		}
-		throw error;
-	} finally {
-		approvalAbort = null;
+// ============================================
+// Main
+// ============================================
+
+async function main() {
+	// Setup
+	ensureMinimalDir();
+	const config = loadConfig();
+	const systemPrompt = loadSystemPrompt();
+	const workspaceRoot = path.resolve(process.env.WORKSPACE_ROOT || process.cwd());
+
+	// Check API key
+	const apiKey = process.env[config.llm.apiKeyEnv];
+	if (!apiKey) {
+		printError(`${config.llm.apiKeyEnv} is not set.`);
+		process.exit(1);
 	}
-}
 
-const tools = buildTools();
+	const groq = new Groq({apiKey});
+	const rl = readline.createInterface({input, output});
+	let approvalAbort: AbortController | null = null;
 
-while (true) {
-	const line = await promptUserLine();
-	if (line === null) break;
-	if (!line) continue;
+	const messages: ChatCompletionMessageParam[] = [
+		{role: 'system', content: systemPrompt},
+	];
 
-	messages.push({role: 'user', content: line});
-
-	try {
-		await runAgentTurn(messages, tools);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.error(`Error: ${message}`);
-	}
-}
-
-rl.close();
-
-function createSystemMessage(): string {
-	return [
-		'You are a helpful coding assistant.',
-		'',
-		'When you need to run a shell command, you must call the bash tool.',
-		'Do not emit COMMAND: lines. Wait for user approval before running anything.',
-	].join('\n');
-}
-
-function buildTools(): ChatCompletionTool[] {
-	return [
+	const tools: ChatCompletionTool[] = [
 		{
 			type: 'function',
 			function: {
 				name: 'bash',
-				description:
-					'Execute a shell command in the workspace. Use for ls, cat, rg, etc.',
+				description: 'Execute a shell command in the workspace.',
 				parameters: {
 					type: 'object',
 					properties: {
@@ -145,99 +394,98 @@ function buildTools(): ChatCompletionTool[] {
 			},
 		},
 	];
-}
 
-async function promptUserLine(): Promise<string | null> {
-	const line = (await rl.question('> ')).trim();
-	if (line === '/exit' || line === '/quit') {
-		return null;
-	}
-	return line;
-}
+	console.log(chalk.bold('Minimal Agent') + chalk.gray(` (${config.llm.model})`));
+	console.log(chalk.gray('Type /help for commands, /exit to quit.'));
+	console.log('');
 
-async function runAgentTurn(
-	turnMessages: ChatCompletionMessageParam[],
-	turnTools: ChatCompletionTool[],
-): Promise<void> {
-	let loopCount = 0;
-
-	while (true) {
-		loopCount += 1;
-		console.log(`\n====={ loop ${loopCount} }=====\n`);
-
-		const response = await groq.chat.completions.create({
-			model,
-			temperature,
-			messages: turnMessages,
-			tools: turnTools,
-			tool_choice: 'auto',
-		});
-
-		const assistant = response.choices?.[0]?.message;
-		const content = assistant?.content ?? '';
-		const toolCalls: ChatCompletionMessageToolCall[] =
-			assistant?.tool_calls ?? [];
-
-		turnMessages.push({
-			role: 'assistant',
-			content: content || '',
-			tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-		});
-
-		if (content) {
-			console.log(content);
-		}
-
-		if (toolCalls.length === 0) {
+	rl.on('SIGINT', () => {
+		if (approvalAbort) {
+			approvalAbort.abort();
 			return;
 		}
+		rl.close();
+		process.exit(0);
+	});
 
-		await handleToolCalls(toolCalls, turnMessages);
+	async function promptApproval(command: string): Promise<boolean> {
+		console.log('');
+		console.log(chalk.yellow('Command:'));
+		console.log(chalk.bold.white(`  ${command}`));
+		console.log('');
+		console.log(chalk.gray('  [enter/y] Run'));
+		console.log(chalk.gray('  [n]       Reject'));
+		console.log(chalk.gray('  [ctrl+c]  Cancel'));
+		console.log('');
+
+		const controller = new AbortController();
+		approvalAbort = controller;
+
+		try {
+			const answer = (
+				await rl.question(chalk.cyan('> '), {signal: controller.signal})
+			)
+				.trim()
+				.toLowerCase();
+
+			if (answer === '' || answer === 'y') {
+				printSuccess('✓ Running...');
+				return true;
+			}
+
+			console.log(chalk.yellow('✗ Rejected'));
+			return false;
+		} catch (error) {
+			if (error instanceof Error && error.name === 'AbortError') {
+				console.log(chalk.yellow('\n✗ Cancelled'));
+				return false;
+			}
+			throw error;
+		} finally {
+			approvalAbort = null;
+		}
 	}
-}
 
-async function handleToolCalls(
-	toolCalls: ChatCompletionMessageToolCall[],
-	turnMessages: ChatCompletionMessageParam[],
-): Promise<void> {
-	for (const call of toolCalls) {
-		console.log('\n====={ tool execution }=====\n');
-		if (call.function?.name !== 'bash') {
-			continue;
-		}
+	async function handleBashTool(
+		command: string,
+		callId: string,
+	): Promise<ChatCompletionMessageParam> {
+		const policy = checkPolicy(command, config);
 
-		const command = parseCommand(call.function.arguments);
-		if (!command) {
-			turnMessages.push({
+		if (policy === 'deny') {
+			printDenied(command);
+			return {
 				role: 'tool',
-				tool_call_id: call.id,
-				content: 'No command provided.',
-			});
-			continue;
+				tool_call_id: callId,
+				content: 'Command denied by policy.',
+			};
 		}
 
-		console.log(`Proposed command: ${command}`);
-		const approved = await promptApproval();
-		if (!approved) {
-			turnMessages.push({
-				role: 'tool',
-				tool_call_id: call.id,
-				content: 'User rejected command.',
-			});
-			continue;
+		if (policy === 'auto') {
+			printAutoApproved(command);
+		} else {
+			const approved = await promptApproval(command);
+			if (!approved) {
+				return {
+					role: 'tool',
+					tool_call_id: callId,
+					content: 'User rejected command.',
+				};
+			}
 		}
 
-		const result = await runBash(command);
+		const result = await runBash(command, workspaceRoot);
+
 		if (result.stdout) {
 			console.log(result.stdout.trimEnd());
 		}
-		if (result.stderr) {
-			console.error(result.stderr.trimEnd());
+		if (result.stderr && result.code !== 0) {
+			console.error(chalk.red(result.stderr.trimEnd()));
 		}
 
-		turnMessages.push({
+		return {
 			role: 'tool',
-			tool_call_id: call.id,
+			tool_call_id: callId,
 			content: JSON.stringify(
 				{
 					command,
@@ -248,17 +496,188 @@ async function handleToolCalls(
 				null,
 				2,
 			),
-		});
+		};
 	}
+
+	async function handleToolCalls(
+		toolCalls: ChatCompletionMessageToolCall[],
+	): Promise<ChatCompletionMessageParam[]> {
+		const results: ChatCompletionMessageParam[] = [];
+
+		for (const call of toolCalls) {
+			if (call.function?.name !== 'bash') {
+				results.push({
+					role: 'tool',
+					tool_call_id: call.id,
+					content: `Unknown tool: ${call.function?.name}`,
+				});
+				continue;
+			}
+
+			let command = '';
+			try {
+				const args = JSON.parse(call.function.arguments || '{}') as {command?: string};
+				command = args.command || '';
+			} catch {
+				command = '';
+			}
+
+			if (!command) {
+				results.push({
+					role: 'tool',
+					tool_call_id: call.id,
+					content: 'No command provided.',
+				});
+				continue;
+			}
+
+			const result = await handleBashTool(command, call.id);
+			results.push(result);
+		}
+
+		return results;
+	}
+
+	async function runAgentTurn(): Promise<void> {
+		let loopCount = 0;
+
+		while (true) {
+			loopCount++;
+			printMuted(`\n─── turn ${loopCount} ───\n`);
+
+			let response;
+			try {
+				response = await groq.chat.completions.create({
+					model: config.llm.model,
+					temperature: config.llm.temperature,
+					max_tokens: config.llm.maxTokens,
+					messages,
+					tools,
+					tool_choice: 'auto',
+				});
+			} catch (e: unknown) {
+				const err = e as {status?: number; code?: string; message?: string};
+				if (err.status === 401) {
+					printError('Invalid API key.');
+				} else if (err.status === 429) {
+					printError('Rate limit exceeded. Wait and retry.');
+				} else if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+					printError('Network error. Check your connection.');
+				} else {
+					printError(err.message || String(e));
+				}
+				return;
+			}
+
+			const assistant = response.choices?.[0]?.message;
+			const content = assistant?.content ?? '';
+			const toolCalls = assistant?.tool_calls ?? [];
+
+			messages.push({
+				role: 'assistant',
+				content: content || '',
+				tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+			});
+
+			if (content) {
+				printMarkdown(content);
+			}
+
+			if (toolCalls.length === 0) {
+				return;
+			}
+
+			const toolResults = await handleToolCalls(toolCalls);
+			messages.push(...toolResults);
+		}
+	}
+
+	async function handleSlashCommand(line: string): Promise<boolean> {
+		const parts = line.slice(1).split(/\s+/);
+		const cmd = parts[0];
+		const args = parts.slice(1).join(' ');
+
+		switch (cmd) {
+			case 'exit':
+			case 'quit':
+				return false;
+
+			case 'clear':
+				messages.length = 1; // Keep system prompt
+				printSuccess('✓ Conversation cleared.');
+				return true;
+
+			case 'help':
+				printHelp();
+				return true;
+
+			case 'prompt': {
+				if (!args) {
+					printPromptList(listPrompts());
+					return true;
+				}
+
+				const promptContent = loadPrompt(args);
+				if (!promptContent) {
+					printError(`Prompt not found: ${args}`);
+					printPromptList(listPrompts());
+					return true;
+				}
+
+				printPromptLoaded(args, promptContent);
+
+				const additional = (
+					await rl.question(chalk.gray('Additional input (optional): '))
+				).trim();
+
+				const userContent = additional
+					? `${promptContent}\n\n${additional}`
+					: promptContent;
+
+				messages.push({role: 'user', content: userContent});
+
+				try {
+					await runAgentTurn();
+				} catch (e) {
+					printError(e instanceof Error ? e.message : String(e));
+				}
+
+				return true;
+			}
+
+			default:
+				printError(`Unknown command: /${cmd}`);
+				printHelp();
+				return true;
+		}
+	}
+
+	// REPL
+	while (true) {
+		const line = (await rl.question(chalk.cyan('> '))).trim();
+
+		if (!line) {
+			continue;
+		}
+
+		if (line.startsWith('/')) {
+			const shouldContinue = await handleSlashCommand(line);
+			if (!shouldContinue) {
+				break;
+			}
+			continue;
+		}
+
+		messages.push({role: 'user', content: line});
+
+		try {
+			await runAgentTurn();
+		} catch (e) {
+			printError(e instanceof Error ? e.message : String(e));
+		}
+	}
+
+	rl.close();
 }
 
-function parseCommand(rawArguments?: string | null): string {
-	try {
-		const args = JSON.parse(rawArguments || '{}') as {
-			command?: string;
-		};
-		return args.command || '';
-	} catch {
-		return '';
-	}
-}
+main();
