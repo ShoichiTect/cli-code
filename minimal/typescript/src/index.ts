@@ -66,10 +66,28 @@ const DEFAULT_CONFIG: Config = {
 // Policy Patterns
 // ============================================
 
-const READ_COMMANDS = "(cat|head|tail|less|more)";
+// Dangerous file patterns - deny reading these files
+const DANGEROUS_FILE_PATTERNS: RegExp[] = [
+  // Secret files
+  /\.env$/,
+  /\.env\./,
+  /\.dev\.vars$/,
+  /credentials/i,
+  /secret/i,
+  /\.pem$/,
+  /\.key$/,
+  /id_rsa/,
+  /id_ed25519/,
+  // Large/binary files
+  /package-lock\.json$/,
+  /yarn\.lock$/,
+  /pnpm-lock\.yaml$/,
+  /\.DS_Store$/,
+  /node_modules/,
+];
 
+// Destructive command patterns - always deny
 const BUILTIN_DENY_PATTERNS: RegExp[] = [
-  // Destructive commands
   /rm\s+(-[rf]+\s+)*\//,
   /rm\s+-rf?\s+\*/,
   /rm\s+-rf?\s+\.\*/,
@@ -86,23 +104,6 @@ const BUILTIN_DENY_PATTERNS: RegExp[] = [
   /chown\s+-R.*\//,
   /curl.*\|\s*(ba)?sh/,
   /wget.*\|\s*(ba)?sh/,
-
-  // Secret file reading
-  new RegExp(`${READ_COMMANDS}\\s+.*\\.env`),
-  new RegExp(`${READ_COMMANDS}\\s+.*\\.dev\\.vars`),
-  new RegExp(`${READ_COMMANDS}\\s+.*credentials`, "i"),
-  new RegExp(`${READ_COMMANDS}\\s+.*secret`, "i"),
-  new RegExp(`${READ_COMMANDS}\\s+.*\\.pem`),
-  new RegExp(`${READ_COMMANDS}\\s+.*\\.key`),
-  new RegExp(`${READ_COMMANDS}\\s+.*id_rsa`),
-  new RegExp(`${READ_COMMANDS}\\s+.*id_ed25519`),
-
-  // Large file reading
-  new RegExp(`${READ_COMMANDS}\\s+.*package-lock\\.json`),
-  new RegExp(`${READ_COMMANDS}\\s+.*yarn\\.lock`),
-  new RegExp(`${READ_COMMANDS}\\s+.*pnpm-lock\\.yaml`),
-  new RegExp(`${READ_COMMANDS}\\s+.*\\.DS_Store`),
-  new RegExp(`${READ_COMMANDS}\\s+.*node_modules`),
 ];
 
 const BUILTIN_AUTO_COMMANDS = [
@@ -111,8 +112,11 @@ const BUILTIN_AUTO_COMMANDS = [
   "whoami",
   "date",
   "which",
+  "cat",
   "head",
   "tail",
+  "less",
+  "more",
   "wc",
   "file",
   "stat",
@@ -286,26 +290,34 @@ function checkPolicy(command: string, config: Config): PolicyResult {
   // Build auto commands
   const autoCommands = [...BUILTIN_AUTO_COMMANDS, ...config.policy.autoCommands];
 
-  // 1. Check deny
+  // 1. Check destructive command patterns
   for (const pattern of denyPatterns) {
     if (pattern.test(cmd)) {
       return "deny";
     }
   }
 
-  // 2. Force ask for complex commands
+  // 2. Check dangerous file patterns in args
+  const args = cmd.split(/\s+/).slice(1).join(" ");
+  for (const pattern of DANGEROUS_FILE_PATTERNS) {
+    if (pattern.test(args)) {
+      return "deny";
+    }
+  }
+
+  // 3. Force ask for complex commands
   if (FORCE_ASK_PATTERN.test(cmd)) {
     return "ask";
   }
 
-  // 3. Check auto
+  // 4. Check auto
   for (const autoCmd of autoCommands) {
     if (cmd === autoCmd || cmd.startsWith(autoCmd + " ")) {
       return "auto";
     }
   }
 
-  // 4. Default action
+  // 5. Default action
   return config.policy.defaultAction;
 }
 
