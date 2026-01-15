@@ -162,7 +162,7 @@ export async function main(options: MainOptions = {}) {
 
   const rl = readline.createInterface({ input, output });
   let approvalAbort: AbortController | null = null;
-  let pendingUserPreamble: string | null = null;
+  let bufferedShellOutput: string | null = null;
 
   const messages: CoreMessage[] = [{ role: "system", content: systemPrompt }];
 
@@ -411,7 +411,7 @@ export async function main(options: MainOptions = {}) {
       case "clear":
       case "new":
         messages.length = 1; // Keep system prompt
-        pendingUserPreamble = null;
+        bufferedShellOutput = null;
         printSuccess("✓ Conversation cleared.");
         return true;
 
@@ -437,10 +437,10 @@ export async function main(options: MainOptions = {}) {
         const additional = (await rl.question(chalk.gray("Additional input (optional): "))).trim();
 
         const baseContent = additional ? `${skillContent}\n\n${additional}` : skillContent;
-        const userContent = pendingUserPreamble
-          ? `${pendingUserPreamble}\n\n${baseContent}`
+        const userContent = bufferedShellOutput
+          ? `${bufferedShellOutput}\n\n${baseContent}`
           : baseContent;
-        pendingUserPreamble = null;
+        bufferedShellOutput = null;
 
         messages.push({ role: "user", content: userContent });
 
@@ -490,8 +490,8 @@ export async function main(options: MainOptions = {}) {
       }
 
       const formatted = formatCommandResult(command, result);
-      pendingUserPreamble = pendingUserPreamble
-        ? `${pendingUserPreamble}\n\n${formatted}`
+      bufferedShellOutput = bufferedShellOutput
+        ? `${bufferedShellOutput}\n\n${formatted}`
         : formatted;
 
       continue;
@@ -505,8 +505,8 @@ export async function main(options: MainOptions = {}) {
       continue;
     }
 
-    const userContent = pendingUserPreamble ? `${pendingUserPreamble}\n\n${line}` : line;
-    pendingUserPreamble = null;
+    const userContent = bufferedShellOutput ? `${bufferedShellOutput}\n\n${line}` : line;
+    bufferedShellOutput = null;
     messages.push({ role: "user", content: userContent });
 
     try {
