@@ -9,6 +9,7 @@ export interface CoreToolCall {
 export interface CoreMessage {
   role: CoreRole;
   content: string;
+  thinking?: string;
   toolCallId?: string;
   toolCalls?: CoreToolCall[];
 }

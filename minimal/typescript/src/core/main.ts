@@ -368,14 +368,22 @@ export async function main(options: MainOptions = {}) {
 
       const assistant = response.message;
       const content = assistant.content ?? "";
+      const thinking = assistant.thinking ?? "";
       const toolCalls = assistant.toolCalls ?? [];
-      debugLog("Assistant message", { content, toolCalls });
+      debugLog("Assistant message", { content, thinking, toolCalls });
 
       messages.push({
         role: "assistant",
         content: content || "",
+        thinking: thinking || undefined,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       });
+
+      if (thinking) {
+        console.log(chalk.dim("─── thinking ───"));
+        console.log(chalk.dim(thinking));
+        console.log(chalk.dim("────────────────"));
+      }
 
       if (content) {
         printMarkdown(content);

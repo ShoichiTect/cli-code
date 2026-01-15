@@ -19,7 +19,10 @@ function toAnthropicTools(tools: CoreTool[]): MessageCreateParams["tools"] {
   }));
 }
 
-function toAnthropicMessages(messages: CoreMessage[]): {
+function toAnthropicMessages(
+  messages: CoreMessage[],
+  options: { enableMessageCache: boolean }
+): {
   systemBlocks: TextBlockParam[];
   messages: MessageCreateParams["messages"];
 } {
@@ -49,6 +52,7 @@ function toAnthropicMessages(messages: CoreMessage[]): {
   }
   const mapped = filteredMessages.map((message, index) => {
     const isLastCacheable = index === lastCacheableIndex;
+    const shouldCacheMessage = options.enableMessageCache && isLastCacheable;
 
     if (message.role === "tool") {
       const content: MessageContent = [
@@ -56,7 +60,7 @@ function toAnthropicMessages(messages: CoreMessage[]): {
           type: "tool_result",
           tool_use_id: message.toolCallId ?? "",
           content: message.content,
-          cache_control: isLastCacheable ? { type: "ephemeral" } : undefined,
+          cache_control: shouldCacheMessage ? { type: "ephemeral" } : undefined,
         },
       ];
       return {
@@ -91,7 +95,7 @@ function toAnthropicMessages(messages: CoreMessage[]): {
       };
     }
 
-    if (isLastCacheable && message.role === "user") {
+    if (shouldCacheMessage && message.role === "user") {
       const content: MessageContent = [
         {
           type: "text",
@@ -119,9 +123,13 @@ function toAnthropicMessages(messages: CoreMessage[]): {
 
 function fromAnthropicResponse(response: Message): ChatResponse {
   const textParts: string[] = [];
+  const thinkingParts: string[] = [];
   const toolCalls: CoreToolCall[] = [];
 
   for (const block of response.content ?? []) {
+    if (block.type === "thinking") {
+      thinkingParts.push((block as { thinking?: string }).thinking ?? "");
+    }
     if (block.type === "text") {
       textParts.push(block.text ?? "");
     }
@@ -142,10 +150,13 @@ function fromAnthropicResponse(response: Message): ChatResponse {
       }
     : undefined;
 
+  const thinking = thinkingParts.join("");
+
   return {
     message: {
       role: "assistant",
       content: textParts.join(""),
+      thinking: thinking || undefined,
       toolCalls: toolCalls.length ? toolCalls : undefined,
     },
     usage,
@@ -156,7 +167,7 @@ function fromAnthropicResponse(response: Message): ChatResponse {
 export function createAnthropicProvider(config: ResolvedLlmConfig): ChatProvider {
   const normalizedBaseUrl = config.baseUrl.replace(/\/v1\/?$/, "");
   const defaultHeaders =
-    config.provider === "anthropic"
+    config.provider === "anthropic" || config.provider === "minimax"
       ? { "anthropic-beta": "prompt-caching-2024-07-31" }
       : undefined;
   const client = new Anthropic({
@@ -173,7 +184,9 @@ export function createAnthropicProvider(config: ResolvedLlmConfig): ChatProvider
 
   return {
     async createChatCompletion(params: CreateChatParams) {
-      const { systemBlocks, messages } = toAnthropicMessages(params.messages);
+      const { systemBlocks, messages } = toAnthropicMessages(params.messages, {
+        enableMessageCache: config.provider !== "minimax",
+      });
       const toolsSummary = JSON.stringify(params.tools, null, 2);
       const systemWithTools: TextBlockParam[] = [
         ...systemBlocks,

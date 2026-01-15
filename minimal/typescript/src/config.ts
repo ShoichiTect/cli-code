@@ -89,6 +89,7 @@ function defaultBaseUrl(provider: string, schemaType: SchemaType): string | unde
   }
   if (schemaType === "anthropic") {
     if (provider === "anthropic") return "https://api.anthropic.com";
+    if (provider === "minimax") return "https://api.minimax.io/anthropic";
   }
   return undefined;
 }
