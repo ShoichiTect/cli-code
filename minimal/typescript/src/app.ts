@@ -10,7 +10,13 @@ import type {
   ChatCompletionMessageToolCall,
   ChatCompletionTool,
 } from "openai/resources/chat/completions";
-import { ensureMinimalDir, loadConfig, loadSystemPrompt, SKILLS_DIR } from "./config.js";
+import {
+  ensureMinimalDir,
+  loadConfig,
+  loadSystemPrompt,
+  resolveLlmConfig,
+  SKILLS_DIR,
+} from "./config.js";
 import { createProvider } from "./providers.js";
 import { checkPolicy, formatCommandResult, runBash } from "./policy-bash.js";
 
@@ -133,16 +139,25 @@ export async function main(options: MainOptions = {}) {
   const systemPrompt = loadSystemPrompt();
   const workspaceRoot = path.resolve(process.env.WORKSPACE_ROOT || process.cwd());
 
-  // Check API key
-  const apiKey = process.env[config.llm.apiKeyEnv];
-  if (!apiKey) {
-    printError(`${config.llm.apiKeyEnv} is not set.`);
+  let llmConfig: ReturnType<typeof resolveLlmConfig>;
+  try {
+    llmConfig = resolveLlmConfig(config);
+  } catch (e) {
+    printError(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  }
+
+  if (!llmConfig.apiKey) {
+    const missing = llmConfig.apiKeyEnv
+      ? `${llmConfig.apiKeyEnv} is not set.`
+      : "API key is not set in config.json.";
+    printError(missing);
     process.exit(1);
   }
 
   let provider: ReturnType<typeof createProvider>;
   try {
-    provider = createProvider(config, apiKey);
+    provider = createProvider(llmConfig);
   } catch (e) {
     printError(e instanceof Error ? e.message : String(e));
     process.exit(1);
@@ -173,7 +188,7 @@ export async function main(options: MainOptions = {}) {
     },
   ];
 
-  console.log(chalk.bold("Minimal Agent") + chalk.gray(` (${config.llm.model})`));
+  console.log(chalk.bold("Minimal Agent") + chalk.gray(` (${llmConfig.model})`));
   if (debug) {
     console.log(chalk.magenta("[DEBUG MODE ENABLED]"));
   }
@@ -350,9 +365,9 @@ export async function main(options: MainOptions = {}) {
       let response;
       try {
         const requestParams = {
-          model: config.llm.model,
-          temperature: config.llm.temperature,
-          max_tokens: config.llm.maxTokens,
+          model: llmConfig.model,
+          temperature: llmConfig.temperature,
+          max_tokens: llmConfig.maxTokens,
           messages,
           tools,
           tool_choice: "auto" as const,

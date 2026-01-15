@@ -3,26 +3,18 @@ import type {
   ChatCompletion,
   ChatCompletionCreateParamsNonStreaming,
 } from "openai/resources/chat/completions";
-import type { Config } from "./config.js";
+import type { ResolvedLlmConfig } from "./config.js";
 
 export interface ChatProvider {
   createChatCompletion(params: ChatCompletionCreateParamsNonStreaming): Promise<ChatCompletion>;
 }
 
-export function createProvider(config: Config, apiKey: string): ChatProvider {
-  const baseURL =
-    config.llm.baseUrl ||
-    (config.llm.provider === "openai"
-      ? "https://api.openai.com/v1"
-      : config.llm.provider === "groq"
-        ? "https://api.groq.com/openai/v1"
-        : "");
-
-  if (!baseURL) {
-    throw new Error("baseUrl is required for custom providers.");
+export function createProvider(config: ResolvedLlmConfig): ChatProvider {
+  if (config.schemaType === "anthropic") {
+    throw new Error("Anthropic schema is not implemented yet.");
   }
 
-  const client = new OpenAI({ apiKey, baseURL });
+  const client = new OpenAI({ apiKey: config.apiKey ?? "", baseURL: config.baseUrl });
   return {
     createChatCompletion(params: ChatCompletionCreateParamsNonStreaming) {
       return client.chat.completions.create(params);
