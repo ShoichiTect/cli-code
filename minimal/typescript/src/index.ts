@@ -7,7 +7,7 @@ import type {
   ChatCompletionTool,
 } from "groq-sdk/resources/chat/completions";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
@@ -143,10 +143,6 @@ marked.setOptions({
 
 function printError(msg: string) {
   console.error(chalk.red(`Error: ${msg}`));
-}
-
-function printInfo(msg: string) {
-  console.log(chalk.cyan(msg));
 }
 
 function printSuccess(msg: string) {
