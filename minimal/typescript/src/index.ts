@@ -479,8 +479,12 @@ async function main() {
 		if (result.stdout) {
 			console.log(result.stdout.trimEnd());
 		}
-		if (result.stderr && result.code !== 0) {
-			console.error(chalk.red(result.stderr.trimEnd()));
+		if (result.stderr) {
+			if (result.code !== 0) {
+				console.error(chalk.red(result.stderr.trimEnd()));
+			} else {
+				console.error(result.stderr.trimEnd());
+			}
 		}
 
 		return {
