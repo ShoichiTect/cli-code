@@ -171,6 +171,8 @@ function printHelp() {
 	console.log(chalk.cyan('  /help') + chalk.gray('           Show this help'));
 	console.log(chalk.cyan('  /exit, /quit') + chalk.gray('    Exit'));
 	console.log('');
+	console.log(chalk.cyan('  !<command>') + chalk.gray('      Execute shell command directly'));
+	console.log('');
 }
 
 function printSkillList(skills: string[]) {
@@ -315,10 +317,21 @@ function checkPolicy(command: string, config: Config): PolicyResult {
 // Bash Execution
 // ============================================
 
-function runBash(
-	command: string,
-	workspaceRoot: string,
-): Promise<{stdout: string; stderr: string; code: number}> {
+interface BashResult {
+	stdout: string;
+	stderr: string;
+	code: number;
+}
+
+function formatCommandResult(command: string, result: BashResult): string {
+	let content = `[command] ${command}`;
+	if (result.stdout) content += `\n[stdout]\n${result.stdout.trimEnd()}`;
+	if (result.stderr) content += `\n[stderr]\n${result.stderr.trimEnd()}`;
+	if (result.code !== 0) content += `\n[exit_code] ${result.code}`;
+	return content;
+}
+
+function runBash(command: string, workspaceRoot: string): Promise<BashResult> {
 	return new Promise(resolve => {
 		const child = spawn(command, {
 			shell: true,
@@ -662,6 +675,32 @@ async function main() {
 		const line = (await rl.question(chalk.cyan('> '))).trim();
 
 		if (!line) {
+			continue;
+		}
+
+		// User direct command execution
+		if (line.startsWith('!')) {
+			const command = line.slice(1).trim();
+			if (!command) continue;
+
+			const result = await runBash(command, workspaceRoot);
+
+			if (result.stdout) {
+				console.log(result.stdout.trimEnd());
+			}
+			if (result.stderr) {
+				if (result.code !== 0) {
+					console.error(chalk.red(result.stderr.trimEnd()));
+				} else {
+					console.error(result.stderr.trimEnd());
+				}
+			}
+
+			messages.push({
+				role: 'user',
+				content: formatCommandResult(command, result),
+			});
+
 			continue;
 		}
 
