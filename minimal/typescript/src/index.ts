@@ -44,7 +44,7 @@ type PolicyResult = 'auto' | 'ask' | 'deny';
 const MINIMAL_DIR = path.join(homedir(), '.minimal');
 const CONFIG_PATH = path.join(MINIMAL_DIR, 'config.json');
 const SYSTEM_MD_PATH = path.join(MINIMAL_DIR, 'system.md');
-const PROMPTS_DIR = path.join(MINIMAL_DIR, 'prompts');
+const SKILLS_DIR = path.join(MINIMAL_DIR, 'skills');
 const BASH_TIMEOUT = 30000;
 
 const DEFAULT_CONFIG: Config = {
@@ -165,29 +165,29 @@ function printHelp() {
 	console.log('');
 	console.log(chalk.bold('Commands:'));
 	console.log(
-		chalk.cyan('  /prompt <name>') + chalk.gray('  Load prompt from ~/.minimal/prompts/'),
+		chalk.cyan('  /skill <name>') + chalk.gray('   Load skill from ~/.minimal/skills/'),
 	);
-	console.log(chalk.cyan('  /clear') + chalk.gray('         Reset conversation'));
-	console.log(chalk.cyan('  /help') + chalk.gray('          Show this help'));
-	console.log(chalk.cyan('  /exit') + chalk.gray('          Exit'));
+	console.log(chalk.cyan('  /clear, /new') + chalk.gray('    Reset conversation'));
+	console.log(chalk.cyan('  /help') + chalk.gray('           Show this help'));
+	console.log(chalk.cyan('  /exit, /quit') + chalk.gray('    Exit'));
 	console.log('');
 }
 
-function printPromptList(prompts: string[]) {
+function printSkillList(skills: string[]) {
 	console.log('');
-	console.log(chalk.bold('Available prompts:'));
-	if (prompts.length === 0) {
+	console.log(chalk.bold('Available skills:'));
+	if (skills.length === 0) {
 		console.log(chalk.gray('  (none)'));
 	} else {
-		prompts.forEach((p, i) => {
-			console.log(chalk.cyan(`  ${i + 1}.`) + ` ${p}`);
+		skills.forEach((s, i) => {
+			console.log(chalk.cyan(`  ${i + 1}.`) + ` ${s}`);
 		});
 	}
-	console.log(chalk.gray('\nUsage: /prompt <name>'));
+	console.log(chalk.gray('\nUsage: /skill <name>'));
 	console.log('');
 }
 
-function printPromptLoaded(name: string, content: string) {
+function printSkillLoaded(name: string, content: string) {
 	console.log(chalk.green(`✓ Loaded: ${name}`));
 	console.log(chalk.gray('─'.repeat(40)));
 	const preview = content.slice(0, 200) + (content.length > 200 ? '...' : '');
@@ -244,29 +244,29 @@ function loadSystemPrompt(): string {
 	return content;
 }
 
-function listPrompts(): string[] {
-	if (!existsSync(PROMPTS_DIR)) {
+function listSkills(): string[] {
+	if (!existsSync(SKILLS_DIR)) {
 		return [];
 	}
 
-	return readdirSync(PROMPTS_DIR)
+	return readdirSync(SKILLS_DIR)
 		.filter(f => f.endsWith('.md'))
 		.map(f => f.replace(/\.md$/, ''));
 }
 
-function loadPrompt(name: string): string | null {
-	const promptPath = path.join(PROMPTS_DIR, `${name}.md`);
-	if (!existsSync(promptPath)) {
+function loadSkill(name: string): string | null {
+	const skillPath = path.join(SKILLS_DIR, `${name}.md`);
+	if (!existsSync(skillPath)) {
 		return null;
 	}
-	return readFileSync(promptPath, 'utf-8');
+	return readFileSync(skillPath, 'utf-8');
 }
 
 function ensureMinimalDir() {
 	if (!existsSync(MINIMAL_DIR)) {
 		printError('~/.minimal directory not found.');
 		console.error(chalk.gray('Run the following to initialize:'));
-		console.error(chalk.gray('  mkdir -p ~/.minimal/prompts'));
+		console.error(chalk.gray('  mkdir -p ~/.minimal/skills'));
 		console.error(chalk.gray('  echo "You are a helpful coding assistant." > ~/.minimal/system.md'));
 		process.exit(1);
 	}
@@ -607,6 +607,7 @@ async function main() {
 				return false;
 
 			case 'clear':
+			case 'new':
 				messages.length = 1; // Keep system prompt
 				printSuccess('✓ Conversation cleared.');
 				return true;
@@ -615,28 +616,28 @@ async function main() {
 				printHelp();
 				return true;
 
-			case 'prompt': {
+			case 'skill': {
 				if (!args) {
-					printPromptList(listPrompts());
+					printSkillList(listSkills());
 					return true;
 				}
 
-				const promptContent = loadPrompt(args);
-				if (!promptContent) {
-					printError(`Prompt not found: ${args}`);
-					printPromptList(listPrompts());
+				const skillContent = loadSkill(args);
+				if (!skillContent) {
+					printError(`Skill not found: ${args}`);
+					printSkillList(listSkills());
 					return true;
 				}
 
-				printPromptLoaded(args, promptContent);
+				printSkillLoaded(args, skillContent);
 
 				const additional = (
 					await rl.question(chalk.gray('Additional input (optional): '))
 				).trim();
 
 				const userContent = additional
-					? `${promptContent}\n\n${additional}`
-					: promptContent;
+					? `${skillContent}\n\n${additional}`
+					: skillContent;
 
 				messages.push({role: 'user', content: userContent});
 
