@@ -28,7 +28,7 @@ export const DEFAULT_CONFIG: Config = {
   llm: {
     provider: "groq",
     model: "moonshotai/kimi-k2-instruct",
-    temperature: 0.7,
+    temperature: 1,
     maxTokens: 4096,
     apiKeyEnv: "GROQ_API_KEY",
     baseUrl: "https://api.groq.com/openai/v1",
