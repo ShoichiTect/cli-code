@@ -397,6 +397,9 @@ async function main() {
 
   const messages: ChatCompletionMessageParam[] = [{ role: "system", content: systemPrompt }];
 
+  // Token usage tracking
+  const sessionTokens = { prompt: 0, completion: 0, total: 0 };
+
   const tools: ChatCompletionTool[] = [
     {
       type: "function",
@@ -590,6 +593,17 @@ async function main() {
         return;
       }
 
+      // Token usage
+      if (response.usage) {
+        const u = response.usage;
+        sessionTokens.prompt += u.prompt_tokens;
+        sessionTokens.completion += u.completion_tokens;
+        sessionTokens.total += u.total_tokens;
+        console.log(
+          chalk.dim(`[tokens] in:${u.prompt_tokens} out:${u.completion_tokens} | session:${sessionTokens.total}`)
+        );
+      }
+
       const assistant = response.choices?.[0]?.message;
       const content = assistant?.content ?? "";
       const toolCalls = assistant?.tool_calls ?? [];
@@ -633,6 +647,7 @@ async function main() {
         printHelp();
         return true;
 
+
       case "skill": {
         if (!args) {
           printSkillList(listSkills());
@@ -672,6 +687,9 @@ async function main() {
 
   // REPL
   while (true) {
+    if (sessionTokens.total > 0) {
+      console.log(chalk.dim(`[session] ${sessionTokens.total} tokens`));
+    }
     const line = (await rl.question(chalk.cyan("> "))).trim();
 
     if (!line) {
