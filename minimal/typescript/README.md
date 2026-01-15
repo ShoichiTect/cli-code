@@ -4,18 +4,21 @@ Minimal Groq CLI agent with bash tool calls and approval flow.
 
 ## Setup
 
-1) Install dependencies:
+1. Install dependencies:
+
 ```
 cd minimal/typescript
 npm install
 ```
 
-2) Build:
+2. Build:
+
 ```
 npm run build
 ```
 
-3) Link and run globally:
+3. Link and run globally:
+
 ```
 npm link
 mini-ts
