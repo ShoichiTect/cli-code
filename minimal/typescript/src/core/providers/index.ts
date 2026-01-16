@@ -1,7 +1,7 @@
 import type { ResolvedLlmConfig } from "../../config.js";
 import type { CoreMessage, CoreTool, CoreUsage } from "../types.js";
-import { createAnthropicProvider } from "./anthropic/index.js";
-import { createOpenAiProvider } from "./openai/index.js";
+import { createAnthropicProvider } from "./anthropic.js";
+import { createOpenAiProvider } from "./openai.js";
 
 export interface CreateChatParams {
   model: string;

@@ -1,15 +1,24 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Message, TextBlockParam, Tool } from "@anthropic-ai/sdk/resources/messages";
-import type { ResolvedLlmConfig } from "../../../config.js";
-import type { CoreMessage, CoreTool, CoreToolCall, CoreUsage } from "../../types.js";
-import type { ChatProvider, ChatResponse, CreateChatParams } from "../index.js";
-import { anthropicOverrides } from "./anthropic.js";
-import { minimaxOverrides } from "./minimax.js";
-import { zaiOverrides } from "./zai.js";
+import type { ResolvedLlmConfig } from "../../config.js";
+import type { CoreMessage, CoreTool, CoreToolCall, CoreUsage } from "../types.js";
+import type { ChatProvider, ChatResponse, CreateChatParams } from "./index.js";
 
 type MessageCreateParams = Parameters<Anthropic["messages"]["create"]>[0];
 type MessageParam = MessageCreateParams["messages"][number];
 type MessageContent = Exclude<MessageParam["content"], string>;
+
+function anthropicOverrides(): Record<string, unknown> {
+  return {};
+}
+
+function minimaxOverrides(): Record<string, unknown> {
+  return {};
+}
+
+function zaiOverrides(): Record<string, unknown> {
+  return {};
+}
 
 function toAnthropicTools(tools: CoreTool[]): MessageCreateParams["tools"] {
   return tools.map((tool) => ({

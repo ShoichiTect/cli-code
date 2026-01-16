@@ -7,11 +7,17 @@ import type {
   ChatCompletionTool,
 } from "openai/resources/chat/completions";
 import type { FunctionParameters } from "openai/resources/shared";
-import type { ResolvedLlmConfig } from "../../../config.js";
-import type { CoreMessage, CoreTool, CoreToolCall, CoreUsage } from "../../types.js";
-import type { ChatProvider, ChatResponse, CreateChatParams } from "../index.js";
-import { groqOverrides } from "./groq.js";
-import { openaiOverrides } from "./openai.js";
+import type { ResolvedLlmConfig } from "../../config.js";
+import type { CoreMessage, CoreTool, CoreToolCall, CoreUsage } from "../types.js";
+import type { ChatProvider, ChatResponse, CreateChatParams } from "./index.js";
+
+function groqOverrides(): Partial<ChatCompletionCreateParamsNonStreaming> {
+  return {};
+}
+
+function openaiOverrides(): Partial<ChatCompletionCreateParamsNonStreaming> {
+  return {};
+}
 
 function toOpenAiTools(tools: CoreTool[]): ChatCompletionTool[] {
   return tools.map((tool) => ({
