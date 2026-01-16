@@ -24,6 +24,28 @@ npm link
 mini-ts
 ```
 
+## Architecture
+
+```
+src/
+├── core/
+│   ├── agent.ts      # createAgent factory (LLM state & tool handling)
+│   ├── main.ts       # REPL loop & user interaction
+│   ├── providers/    # OpenAI/Anthropic API adapters
+│   └── types.ts      # Core type definitions
+├── config.ts         # Config loading & resolution
+├── policy-bash.ts    # Bash command policy (auto/ask/deny)
+└── tools/
+    └── bash.ts       # Bash tool definition
+```
+
+**Key Design**
+
+- `createAgent()` returns an Agent object with closure-based state management
+- Agent handles: LLM calls, message history, token tracking, tool execution
+- `main()` handles: REPL, readline, command approval prompts, slash commands
+- Callbacks bridge the two: `promptApproval`, `onAutoApproved`, `onDenied`
+
 ## Notes
 
 - The app reads `.env` from the current directory.

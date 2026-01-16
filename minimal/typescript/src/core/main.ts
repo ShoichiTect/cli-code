@@ -3,31 +3,18 @@ import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import readline from "node:readline/promises";
 import chalk from "chalk";
-import { marked } from "marked";
-import TerminalRenderer from "marked-terminal";
 import {
   ensureMinimalDir,
   loadConfig,
   loadSystemPrompt,
-  resolveLlmConfig,
   SKILLS_DIR,
 } from "../config.js";
-import { createProvider } from "./providers/index.js";
-import { checkPolicy, formatCommandResult, runBash } from "../policy-bash.js";
-import type { CoreMessage, CoreTool, CoreToolCall } from "./types.js";
-import { bashTool } from "../tools/bash.js";
+import { runBash, formatCommandResult } from "../policy-bash.js";
+import { createAgent, type Agent } from "./agent.js";
 
 // ============================================
 // UI Helpers
 // ============================================
-
-marked.setOptions({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  renderer: new TerminalRenderer({
-    reflowText: true,
-    width: 80,
-  }) as any,
-});
 
 function printError(msg: string) {
   console.error(chalk.red(`Error: ${msg}`));
@@ -35,14 +22,6 @@ function printError(msg: string) {
 
 function printSuccess(msg: string) {
   console.log(chalk.green(msg));
-}
-
-function printMuted(msg: string) {
-  console.log(chalk.gray(msg));
-}
-
-function printMarkdown(content: string) {
-  console.log(marked(content));
 }
 
 function printHelp() {
@@ -130,63 +109,18 @@ export async function main(options: MainOptions = {}) {
       console.log(chalk.magenta(JSON.stringify(data, null, 2)));
     }
   }
+
   // Setup
   ensureMinimalDir();
   const config = loadConfig();
   const systemPrompt = loadSystemPrompt();
   const workspaceRoot = path.resolve(process.env.WORKSPACE_ROOT || process.cwd());
 
-  let llmConfig: ReturnType<typeof resolveLlmConfig>;
-  try {
-    llmConfig = resolveLlmConfig(config);
-  } catch (e) {
-    printError(e instanceof Error ? e.message : String(e));
-    process.exit(1);
-  }
-
-  if (!llmConfig.apiKey) {
-    const missing = llmConfig.apiKeyEnv
-      ? `${llmConfig.apiKeyEnv} is not set.`
-      : "API key is not set in config.json.";
-    printError(missing);
-    process.exit(1);
-  }
-
-  let provider: ReturnType<typeof createProvider>;
-  try {
-    provider = createProvider(llmConfig);
-  } catch (e) {
-    printError(e instanceof Error ? e.message : String(e));
-    process.exit(1);
-  }
-
   const rl = readline.createInterface({ input, output });
   let approvalAbort: AbortController | null = null;
   let bufferedShellOutput: string | null = null;
 
-  const messages: CoreMessage[] = [{ role: "system", content: systemPrompt }];
-
-  // Token usage tracking
-  const sessionTokens = { prompt: 0, completion: 0, total: 0 };
-
-  const tools: CoreTool[] = [bashTool];
-
-  console.log(chalk.bold("Minimal Agent") + chalk.gray(` (${llmConfig.model})`));
-  if (debug) {
-    console.log(chalk.magenta("[DEBUG MODE ENABLED]"));
-  }
-  console.log(chalk.gray("Type /help for commands, /exit to quit."));
-  console.log("");
-
-  rl.on("SIGINT", () => {
-    if (approvalAbort) {
-      approvalAbort.abort();
-      return;
-    }
-    rl.close();
-    process.exit(0);
-  });
-
+  // ─── Approval Prompt ───
   async function promptApproval(command: string): Promise<boolean> {
     console.log("");
     console.log(chalk.yellow("Command:"));
@@ -223,181 +157,43 @@ export async function main(options: MainOptions = {}) {
     }
   }
 
-  async function handleBashTool(command: string, callId: string): Promise<CoreMessage> {
-    const policy = checkPolicy(command, config);
-
-    if (policy === "deny") {
-      printDenied(command);
-      return {
-        role: "tool",
-        toolCallId: callId,
-        content: "Command denied by policy.",
-      };
-    }
-
-    if (policy === "auto") {
-      printAutoApproved(command);
-    } else {
-      const approved = await promptApproval(command);
-      if (!approved) {
-        return {
-          role: "tool",
-          toolCallId: callId,
-          content: "User rejected command.",
-        };
-      }
-    }
-
-    const result = await runBash(command, workspaceRoot);
-
-    if (result.stdout) {
-      console.log(result.stdout.trimEnd());
-    }
-    if (result.stderr) {
-      if (result.code !== 0) {
-        console.error(chalk.red(result.stderr.trimEnd()));
-      } else {
-        console.error(result.stderr.trimEnd());
-      }
-    }
-
-    return {
-      role: "tool",
-      toolCallId: callId,
-      content: JSON.stringify(
-        {
-          command,
-          exitCode: result.code,
-          stdout: result.stdout,
-          stderr: result.stderr,
-        },
-        null,
-        2
-      ),
-    };
+  // ─── Create Agent ───
+  let agent: Agent;
+  try {
+    agent = createAgent({
+      config,
+      systemPrompt,
+      workspaceRoot,
+      debug,
+      callbacks: {
+        promptApproval,
+        onAutoApproved: printAutoApproved,
+        onDenied: printDenied,
+        onDebugLog: debugLog,
+      },
+    });
+  } catch (e) {
+    printError(e instanceof Error ? e.message : String(e));
+    process.exit(1);
   }
 
-  async function handleToolCalls(toolCalls: CoreToolCall[]): Promise<CoreMessage[]> {
-    const results: CoreMessage[] = [];
-
-    for (const call of toolCalls) {
-      if (call.name !== "bash") {
-        results.push({
-          role: "tool",
-          toolCallId: call.id,
-          content: `Unknown tool: ${call.name}`,
-        });
-        continue;
-      }
-
-      let command = "";
-      const input = call.input;
-
-      if (typeof input === "string") {
-        try {
-          const parsed = JSON.parse(input) as { command?: string };
-          command = parsed.command || "";
-        } catch {
-          command = input;
-        }
-      } else if (input && typeof input === "object") {
-        command = (input as { command?: string }).command || "";
-      }
-
-      if (!command) {
-        results.push({
-          role: "tool",
-          toolCallId: call.id,
-          content: "No command provided.",
-        });
-        continue;
-      }
-
-      const result = await handleBashTool(command, call.id);
-      results.push(result);
-    }
-
-    return results;
+  console.log(chalk.bold("Minimal Agent") + chalk.gray(` (${agent.getModel()})`));
+  if (debug) {
+    console.log(chalk.magenta("[DEBUG MODE ENABLED]"));
   }
+  console.log(chalk.gray("Type /help for commands, /exit to quit."));
+  console.log("");
 
-  async function runAgentTurn(): Promise<void> {
-    let loopCount = 0;
-
-    while (true) {
-      loopCount++;
-      printMuted(`\n─── turn ${loopCount} ───\n`);
-
-      let response;
-      try {
-        const requestParams = {
-          model: llmConfig.model,
-          temperature: llmConfig.temperature,
-          maxTokens: llmConfig.maxTokens,
-          messages,
-          tools,
-        };
-        debugLog("API Request", requestParams);
-        response = await provider.createChatCompletion(requestParams);
-        debugLog("API Response", response);
-      } catch (e: unknown) {
-        const err = e as { status?: number; code?: string; message?: string };
-        if (err.status === 401) {
-          printError("Invalid API key.");
-        } else if (err.status === 429) {
-          printError("Rate limit exceeded. Wait and retry.");
-        } else if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND") {
-          printError("Network error. Check your connection.");
-        } else {
-          printError(err.message || String(e));
-        }
-        return;
-      }
-
-      // Token usage
-      if (response.usage) {
-        const u = response.usage;
-        sessionTokens.prompt += u.promptTokens;
-        sessionTokens.completion += u.completionTokens;
-        sessionTokens.total += u.totalTokens;
-        console.log(
-          chalk.dim(
-            `[tokens] in:${u.promptTokens} out:${u.completionTokens} | session:${sessionTokens.total}`
-          )
-        );
-      }
-
-      const assistant = response.message;
-      const content = assistant.content ?? "";
-      const thinking = assistant.thinking ?? "";
-      const toolCalls = assistant.toolCalls ?? [];
-      debugLog("Assistant message", { content, thinking, toolCalls });
-
-      messages.push({
-        role: "assistant",
-        content: content || "",
-        thinking: thinking || undefined,
-        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-      });
-
-      if (thinking) {
-        console.log(chalk.dim("─── thinking ───"));
-        console.log(chalk.dim(thinking));
-        console.log(chalk.dim("────────────────"));
-      }
-
-      if (content) {
-        printMarkdown(content);
-      }
-
-      if (toolCalls.length === 0) {
-        return;
-      }
-
-      const toolResults = await handleToolCalls(toolCalls);
-      messages.push(...toolResults);
+  rl.on("SIGINT", () => {
+    if (approvalAbort) {
+      approvalAbort.abort();
+      return;
     }
-  }
+    rl.close();
+    process.exit(0);
+  });
 
+  // ─── Slash Commands ───
   async function handleSlashCommand(line: string): Promise<boolean> {
     const parts = line.slice(1).split(/\s+/);
     const cmd = parts[0];
@@ -410,7 +206,7 @@ export async function main(options: MainOptions = {}) {
 
       case "clear":
       case "new":
-        messages.length = 1; // Keep system prompt
+        agent.clear();
         bufferedShellOutput = null;
         printSuccess("✓ Conversation cleared.");
         return true;
@@ -442,10 +238,10 @@ export async function main(options: MainOptions = {}) {
           : baseContent;
         bufferedShellOutput = null;
 
-        messages.push({ role: "user", content: userContent });
+        agent.addUserMessage(userContent);
 
         try {
-          await runAgentTurn();
+          await agent.runAgentTurn();
         } catch (e) {
           printError(e instanceof Error ? e.message : String(e));
         }
@@ -460,10 +256,11 @@ export async function main(options: MainOptions = {}) {
     }
   }
 
-  // REPL
+  // ─── REPL ───
   while (true) {
-    if (sessionTokens.total > 0) {
-      console.log(chalk.dim(`[session] ${sessionTokens.total} tokens`));
+    const tokens = agent.getTokens();
+    if (tokens.total > 0) {
+      console.log(chalk.dim(`[session] ${tokens.total} tokens`));
     }
     const line = (await rl.question(chalk.cyan("> "))).trim();
 
@@ -507,10 +304,10 @@ export async function main(options: MainOptions = {}) {
 
     const userContent = bufferedShellOutput ? `${bufferedShellOutput}\n\n${line}` : line;
     bufferedShellOutput = null;
-    messages.push({ role: "user", content: userContent });
+    agent.addUserMessage(userContent);
 
     try {
-      await runAgentTurn();
+      await agent.runAgentTurn();
     } catch (e) {
       printError(e instanceof Error ? e.message : String(e));
     }
