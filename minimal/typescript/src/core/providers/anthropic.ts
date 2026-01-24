@@ -9,223 +9,223 @@ type MessageParam = MessageCreateParams["messages"][number];
 type MessageContent = Exclude<MessageParam["content"], string>;
 
 function anthropicOverrides(): Record<string, unknown> {
-  return {};
+    return {};
 }
 
 function minimaxOverrides(): Record<string, unknown> {
-  return {};
+    return {};
 }
 
 function zaiOverrides(): Record<string, unknown> {
-  return {};
+    return {};
 }
 
 function toAnthropicTools(tools: CoreTool[]): MessageCreateParams["tools"] {
-  return tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    input_schema: tool.inputSchema as Tool.InputSchema,
-  }));
+    return tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.inputSchema as Tool.InputSchema,
+    }));
 }
 
 function toAnthropicMessages(
-  messages: CoreMessage[],
-  options: { enableMessageCache: boolean }
+    messages: CoreMessage[],
+    options: { enableMessageCache: boolean }
 ): {
-  systemBlocks: TextBlockParam[];
-  messages: MessageCreateParams["messages"];
+    systemBlocks: TextBlockParam[];
+    messages: MessageCreateParams["messages"];
 } {
-  const systemParts = messages
-    .filter((message) => message.role === "system")
-    .map((message) => message.content)
-    .filter(Boolean);
+    const systemParts = messages
+        .filter((message) => message.role === "system")
+        .map((message) => message.content)
+        .filter(Boolean);
 
-  const systemText = systemParts.join("\n\n").trim();
-  const systemBlocks: TextBlockParam[] = systemText
-    ? [
-        {
-          type: "text",
-          text: systemText,
-          cache_control: { type: "ephemeral" },
-        },
-      ]
-    : [];
+    const systemText = systemParts.join("\n\n").trim();
+    const systemBlocks: TextBlockParam[] = systemText
+        ? [
+              {
+                  type: "text",
+                  text: systemText,
+                  cache_control: { type: "ephemeral" },
+              },
+          ]
+        : [];
 
-  const filteredMessages = messages.filter((message) => message.role !== "system");
-  let lastCacheableIndex = -1;
-  for (let index = filteredMessages.length - 1; index >= 0; index -= 1) {
-    if (filteredMessages[index]?.role !== "assistant") {
-      lastCacheableIndex = index;
-      break;
+    const filteredMessages = messages.filter((message) => message.role !== "system");
+    let lastCacheableIndex = -1;
+    for (let index = filteredMessages.length - 1; index >= 0; index -= 1) {
+        if (filteredMessages[index]?.role !== "assistant") {
+            lastCacheableIndex = index;
+            break;
+        }
     }
-  }
-  const mapped = filteredMessages.map((message, index) => {
-    const isLastCacheable = index === lastCacheableIndex;
-    const shouldCacheMessage = options.enableMessageCache && isLastCacheable;
+    const mapped = filteredMessages.map((message, index) => {
+        const isLastCacheable = index === lastCacheableIndex;
+        const shouldCacheMessage = options.enableMessageCache && isLastCacheable;
 
-    if (message.role === "tool") {
-      const content: MessageContent = [
-        {
-          type: "tool_result",
-          tool_use_id: message.toolCallId ?? "",
-          content: message.content,
-          cache_control: shouldCacheMessage ? { type: "ephemeral" } : undefined,
-        },
-      ];
-      return {
-        role: "user",
-        content,
-      };
-    }
+        if (message.role === "tool") {
+            const content: MessageContent = [
+                {
+                    type: "tool_result",
+                    tool_use_id: message.toolCallId ?? "",
+                    content: message.content,
+                    cache_control: shouldCacheMessage ? { type: "ephemeral" } : undefined,
+                },
+            ];
+            return {
+                role: "user",
+                content,
+            };
+        }
 
-    if (message.role === "assistant" && message.toolCalls?.length) {
-      const content: MessageContent = [];
+        if (message.role === "assistant" && message.toolCalls?.length) {
+            const content: MessageContent = [];
 
-      if (message.content) {
-        content.push({
-          type: "text",
-          text: message.content,
-        });
-      }
+            if (message.content) {
+                content.push({
+                    type: "text",
+                    text: message.content,
+                });
+            }
 
-      for (const [callIndex, call] of message.toolCalls.entries()) {
-        const isLastToolUse = callIndex === message.toolCalls.length - 1;
-        content.push({
-          type: "tool_use",
-          id: call.id,
-          name: call.name,
-          input: call.input,
-        });
-      }
+            for (const [callIndex, call] of message.toolCalls.entries()) {
+                const isLastToolUse = callIndex === message.toolCalls.length - 1;
+                content.push({
+                    type: "tool_use",
+                    id: call.id,
+                    name: call.name,
+                    input: call.input,
+                });
+            }
 
-      return {
-        role: "assistant",
-        content,
-      };
-    }
+            return {
+                role: "assistant",
+                content,
+            };
+        }
 
-    if (shouldCacheMessage && message.role === "user") {
-      const content: MessageContent = [
-        {
-          type: "text",
-          text: message.content,
-          cache_control: { type: "ephemeral" },
-        },
-      ];
-      return {
-        role: message.role,
-        content,
-      };
-    }
+        if (shouldCacheMessage && message.role === "user") {
+            const content: MessageContent = [
+                {
+                    type: "text",
+                    text: message.content,
+                    cache_control: { type: "ephemeral" },
+                },
+            ];
+            return {
+                role: message.role,
+                content,
+            };
+        }
+
+        return {
+            role: message.role,
+            content: message.content,
+        };
+    });
 
     return {
-      role: message.role,
-      content: message.content,
+        systemBlocks,
+        messages: mapped as MessageCreateParams["messages"],
     };
-  });
-
-  return {
-    systemBlocks,
-    messages: mapped as MessageCreateParams["messages"],
-  };
 }
 
 function fromAnthropicResponse(response: Message): ChatResponse {
-  const textParts: string[] = [];
-  const thinkingParts: string[] = [];
-  const toolCalls: CoreToolCall[] = [];
+    const textParts: string[] = [];
+    const thinkingParts: string[] = [];
+    const toolCalls: CoreToolCall[] = [];
 
-  for (const block of response.content ?? []) {
-    if (block.type === "thinking") {
-      thinkingParts.push((block as { thinking?: string }).thinking ?? "");
+    for (const block of response.content ?? []) {
+        if (block.type === "thinking") {
+            thinkingParts.push((block as { thinking?: string }).thinking ?? "");
+        }
+        if (block.type === "text") {
+            textParts.push(block.text ?? "");
+        }
+        if (block.type === "tool_use") {
+            toolCalls.push({
+                id: block.id,
+                name: block.name,
+                input: block.input,
+            });
+        }
     }
-    if (block.type === "text") {
-      textParts.push(block.text ?? "");
-    }
-    if (block.type === "tool_use") {
-      toolCalls.push({
-        id: block.id,
-        name: block.name,
-        input: block.input,
-      });
-    }
-  }
 
-  const usage: CoreUsage | undefined = response.usage
-    ? {
-        promptTokens: response.usage.input_tokens ?? 0,
-        completionTokens: response.usage.output_tokens ?? 0,
-        totalTokens: (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0),
-      }
-    : undefined;
+    const usage: CoreUsage | undefined = response.usage
+        ? {
+              promptTokens: response.usage.input_tokens ?? 0,
+              completionTokens: response.usage.output_tokens ?? 0,
+              totalTokens: (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0),
+          }
+        : undefined;
 
-  const thinking = thinkingParts.join("");
+    const thinking = thinkingParts.join("");
 
-  return {
-    message: {
-      role: "assistant",
-      content: textParts.join(""),
-      thinking: thinking || undefined,
-      toolCalls: toolCalls.length ? toolCalls : undefined,
-    },
-    usage,
-    rawUsage: response.usage ?? undefined,
-  };
+    return {
+        message: {
+            role: "assistant",
+            content: textParts.join(""),
+            thinking: thinking || undefined,
+            toolCalls: toolCalls.length ? toolCalls : undefined,
+        },
+        usage,
+        rawUsage: response.usage ?? undefined,
+    };
 }
 
 export function createAnthropicProvider(config: ResolvedLlmConfig): ChatProvider {
-  const normalizedBaseUrl = config.baseUrl.replace(/\/v1\/?$/, "");
-  const defaultHeaders =
-    config.provider === "anthropic" || config.provider === "minimax"
-      ? { "anthropic-beta": "prompt-caching-2024-07-31" }
-      : undefined;
-  const client = new Anthropic({
-    apiKey: config.apiKey ?? "",
-    baseURL: normalizedBaseUrl,
-    defaultHeaders,
-  });
-  const overrides =
-    config.provider === "minimax"
-      ? minimaxOverrides()
-      : config.provider === "zai"
-        ? zaiOverrides()
-        : anthropicOverrides();
+    const normalizedBaseUrl = config.baseUrl.replace(/\/v1\/?$/, "");
+    const defaultHeaders =
+        config.provider === "anthropic" || config.provider === "minimax"
+            ? { "anthropic-beta": "prompt-caching-2024-07-31" }
+            : undefined;
+    const client = new Anthropic({
+        apiKey: config.apiKey ?? "",
+        baseURL: normalizedBaseUrl,
+        defaultHeaders,
+    });
+    const overrides =
+        config.provider === "minimax"
+            ? minimaxOverrides()
+            : config.provider === "zai"
+              ? zaiOverrides()
+              : anthropicOverrides();
 
-  return {
-    async createChatCompletion(params: CreateChatParams) {
-      const { systemBlocks, messages } = toAnthropicMessages(params.messages, {
-        enableMessageCache: config.provider !== "minimax",
-      });
-      const toolsSummary = JSON.stringify(params.tools, null, 2);
-      const systemWithTools: TextBlockParam[] = [
-        ...systemBlocks,
-        {
-          type: "text",
-          text: systemBlocks.length
-            ? `\n\n## Available Tools\n\n${toolsSummary}`
-            : `## Available Tools\n\n${toolsSummary}`,
-          cache_control: { type: "ephemeral" },
+    return {
+        async createChatCompletion(params: CreateChatParams) {
+            const { systemBlocks, messages } = toAnthropicMessages(params.messages, {
+                enableMessageCache: config.provider !== "minimax",
+            });
+            const toolsSummary = JSON.stringify(params.tools, null, 2);
+            const systemWithTools: TextBlockParam[] = [
+                ...systemBlocks,
+                {
+                    type: "text",
+                    text: systemBlocks.length
+                        ? `\n\n## Available Tools\n\n${toolsSummary}`
+                        : `## Available Tools\n\n${toolsSummary}`,
+                    cache_control: { type: "ephemeral" },
+                },
+            ];
+            const requestParams: MessageCreateParams = {
+                model: params.model,
+                max_tokens: params.maxTokens,
+                temperature: params.temperature,
+                system: systemWithTools,
+                messages,
+                tools: toAnthropicTools(params.tools),
+                tool_choice: { type: "auto" },
+                stream: false,
+                ...(overrides as Partial<MessageCreateParams>),
+            };
+
+            const response = (await client.messages.create(requestParams)) as Message;
+            const result = fromAnthropicResponse(response);
+            return {
+                ...result,
+                rawRequest: requestParams,
+                rawHeaders: defaultHeaders,
+            };
         },
-      ];
-      const requestParams: MessageCreateParams = {
-        model: params.model,
-        max_tokens: params.maxTokens,
-        temperature: params.temperature,
-        system: systemWithTools,
-        messages,
-        tools: toAnthropicTools(params.tools),
-        tool_choice: { type: "auto" },
-        stream: false,
-        ...(overrides as Partial<MessageCreateParams>),
-      };
-
-      const response = (await client.messages.create(requestParams)) as Message;
-      const result = fromAnthropicResponse(response);
-      return {
-        ...result,
-        rawRequest: requestParams,
-        rawHeaders: defaultHeaders,
-      };
-    },
-  };
+    };
 }

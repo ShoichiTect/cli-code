@@ -62,6 +62,7 @@ Each variant declares a `schema_type` (`openai` or `anthropic`), plus
 `api_key` or `api_key_env`, `base_url`, and optional defaults.
 
 Notes:
+
 - `api_key` is used first when present.
 - If `api_key` is missing, `api_key_env` is treated as the name of an
   environment variable to read.

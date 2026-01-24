@@ -7,7 +7,7 @@ const shebang = "#!/usr/bin/env node\n";
 
 const content = await readFile(target, "utf8");
 if (!content.startsWith(shebang)) {
-  const updated = `${shebang}${content}`;
-  await writeFile(target, updated, "utf8");
-  await chmod(target, 0o755);
+    const updated = `${shebang}${content}`;
+    await writeFile(target, updated, "utf8");
+    await chmod(target, 0o755);
 }
