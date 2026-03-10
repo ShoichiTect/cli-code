@@ -1,0 +1,19 @@
+{
+	"name": "minimal-agent-v1",
+	"version": "1.0.0",
+	"type": "module",
+	"scripts": {
+		"start": "npx tsx main.ts",
+		"test": "node --import tsx --test test.ts",
+		"lint": "npx biome check .",
+		"lint:fix": "npx biome check --write .",
+		"format": "npx biome format --write .",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.6",
+		"@types/node": "^25.4.0",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3"
+	}
+}

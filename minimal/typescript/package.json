@@ -5,10 +5,14 @@
     "scripts": {
         "dev": "tsx src/index.ts",
         "build": "tsc",
+        "demo:v2": "tsx demo/v2/main.ts",
+        "demo:v2:test": "node --import tsx --test demo/v2/test.ts",
+        "lint": "biome check demo/v2",
+        "lint:fix": "biome check --write demo/v2",
         "postbuild": "node scripts/add-shebang.mjs",
         "start": "node dist/index.js",
-        "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format": "biome format --write demo/v2",
+        "format:check": "biome format demo/v2"
     },
     "bin": {
         "mini-ts": "dist/index.js"
@@ -22,6 +26,7 @@
         "openai": "^6.16.0"
     },
     "devDependencies": {
+        "@biomejs/biome": "^1.9.4",
         "@types/marked-terminal": "^6.1.1",
         "@types/node": "^20.11.0",
         "prettier": "^3.8.0",
