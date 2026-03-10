@@ -119,7 +119,7 @@ export function createOpenAiProvider(config: ResolvedLlmConfig): ChatProvider {
             const requestParams: ChatCompletionCreateParamsNonStreaming = {
                 model: params.model,
                 temperature: params.temperature,
-                max_tokens: params.maxTokens,
+                max_completion_tokens: params.maxTokens,
                 messages: toOpenAiMessages(params.messages),
                 tools: toOpenAiTools(params.tools),
                 tool_choice: "auto",
